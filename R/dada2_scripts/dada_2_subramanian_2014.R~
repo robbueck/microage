@@ -1,0 +1,385 @@
+rm(list = ls())
+maindir <- "/fast/AG_Forslund/rob/studies/16S/subramanian_2014"
+setwd(maindir)
+library(dada2)
+library("reshape2")
+library("dplyr")
+library("ggplot2")
+library("phangorn")
+library("picante")
+library("btools")
+library("microbiome")
+library("umap")
+library("gridExtra")
+library("Rtsne")
+library("plotly")
+
+# load additional custom functions
+source("/fast/AG_Forslund/rob/mm_index/R_scripts/dada_2_functions.R")
+
+# switch parts of the pipeline on/off
+filter_step <- F
+error_and_asv_step <- F
+remove_chimeras_step <- F
+id_taxa_step <- F
+tree_step <- F
+phyloseq_step <- T
+ordination_step <- F
+
+
+# load metadata
+metadata_sub <- read.table("metadata_subramanian_2014_healthy.csv", sep = ",", header = T)
+library_names <- unique(metadata_sub$library_name)
+if(any(is.na(library_names))){
+  stop("Library names contain NAs")
+}
+
+out <- vector("list", length(library_names))
+seqtab <- vector("list", length(library_names))
+names(out) <- library_names
+names(seqtab) <- library_names
+
+# filter, learn errors and denoise seperately
+for(library in library_names) {
+  library_samples <- metadata_sub$run_accession[metadata_sub$library_name == library]
+  print(paste("analyzing", length(library_samples), "samples in",
+              library, which(library_names == library), "of",
+              length(library_names), "libraries",
+              sep = " "))
+  print("Filter")
+  if(filter_step) {
+    out[[library]] <- filtering_fastq(sample_names = library_samples,
+                                  trimLeft = 10,
+                                  truncLen=140,
+                                  maxN=0,
+                                  maxEE=c(2,2),
+                                  truncQ=2,
+                                  cores = 15)
+    saveRDS(out[[library]], paste0(maindir, "/dada2/lib_", library, "_out_table.rds")) # save for each run separately
+  } else {
+    out[[library]] <- readRDS(paste0(maindir, "/dada2/lib_", library, "_out_table.rds"))
+  }
+  if(error_and_asv_step) {
+    total_bases <- total_bases <- sum(out[[library]][,2]) * 130  # because error estimation is done for forward and reverse
+    seqtab[[library]] <- error_and_asv(sample_names = library_samples, libname = library, nbases = 0.25*total_bases, cores = 15)
+    saveRDS(seqtab[[library]], paste0(maindir, "/dada2/lib_", library, "_seqtab.rds")) # save for each run separately
+  } else {
+    seqtab[[library]] <- readRDS(paste0(maindir, "/dada2/lib_", library, "_seqtab.rds"))
+  }
+}
+
+st.all <- mergeSequenceTables(tables = seqtab)
+
+
+# how much got filtered out in each library?
+out[["combined"]] <-  do.call("rbind", out)
+cdf_data_filter <- melt(lapply(out, function(x){loss_ratio(x[,2], x[,1])}),
+                 value.name = "filter_ratio")
+colnames(cdf_data_filter)[2] <- "Library"
+# violin plot:
+sample_size = cdf_data_filter %>% group_by(Library) %>% dplyr::summarize(num=n())
+cdf_data_filter <- cdf_data_filter %>% 
+  left_join(sample_size) %>%
+  mutate(Library = paste0(Library, "\n", "n=", num))
+ggplot(cdf_data_filter, aes(x=Library, y = filter_ratio, color = Library)) + 
+  geom_violin() +
+  ylim(0,1) +
+  geom_boxplot(width=0.1) +
+  coord_flip() +
+  theme(legend.position="none")
+ggsave("dada2/violin_filter_ratios_per_library.pdf", device = "pdf")
+# cdf_data_filter <- ddply(cdf_data_filter, .(Library), transform, ecd=ecdf(filter_ratio)(filter_ratio))
+ggplot(cdf_data_filter, aes(x=filter_ratio, col = Library)) + 
+  stat_ecdf() +
+  ylab("samples") +
+  xlim(0,1)
+ggsave("dada2/cfd_filter_ratios_per_library.pdf", device = "pdf")
+# some libraries seem to be quite bad, check qualities along seqs
+
+# assess filter criteria for samples from each library
+library_samples <- metadata_sub$run_accession[metadata_sub$library_name == "Twins56_run1"]
+fnFs <- sort(file.path(maindir, "fastq_files/decontaminated", paste0(library_samples, "_dec_1.fastq.gz")))
+fnRs <- sort(file.path(maindir, "fastq_files/decontaminated", paste0(library_samples, "_dec_2.fastq.gz")))
+filtFs <- (file.path(maindir, "fastq_files/filtered", paste0(library_samples, "_dec_filt_1.fastq.gz")))
+filtRs <- sort(file.path(maindir, "fastq_files/filtered", paste0(library_samples, "_dec_filt_2.fastq.gz")))
+plotQualityProfile(c(fnFs[1], filtFs[1], fnRs[1], filtRs[1]))
+ggsave("dada2/quality_profile_twins.pdf", device = "pdf")
+
+
+
+# Inspect distribution of sequence lengths
+cdf_data_seqlen <- melt(lapply(seqtab, function(x){nchar(getSequences(x))}),
+                 value.name = "seq_length")
+colnames(cdf_data_seqlen)[2] <- "Library"
+# violin plot:
+sample_size = cdf_data_seqlen %>% group_by(Library) %>% dplyr::summarize(num=n())
+cdf_data_seqlen <- cdf_data_seqlen %>% 
+  left_join(sample_size) %>%
+  mutate(Library = paste0(Library, "\n", "n=", num))
+ggplot(cdf_data_seqlen, aes(x=Library, y = seq_length, color = Library)) + 
+  geom_violin() +
+  geom_boxplot(width=0.1) +
+  coord_flip() +
+  theme(legend.position="none")
+ggsave("dada2/violin_seq_lengths_per_library.pdf", device = "pdf")
+
+# cdf_data_seqlen <- ddply(cdf_data_seqlen, .(Library), transform, ecd=ecdf(seq_length)(seq_length))
+ggplot(cdf_data_seqlen, aes(x=seq_length, col = Library)) + 
+  stat_ecdf() +
+  ylab("samples") 
+ggsave("dada2/cfd_seq_lengths_per_library.pdf", device = "pdf")
+
+
+
+# remove chimeras
+print("remove chimeras")
+if (remove_chimeras_step) {
+  st.all.nochim <- removeBimeraDenovo(st.all, method="consensus", multithread=10, verbose=TRUE)
+  saveRDS(st.all.nochim, "dada2/st_all_nochim.rds")
+} else {
+  st.all.nochim <- readRDS("dada2/st_all_nochim.rds")
+}
+dim(st.all.nochim)
+sum(st.all.nochim)/sum(st.all)
+
+
+# where do most reads get lost?
+# load read counts for decontamination
+read_counts_raw <- read.table("read_counts_raw.txt", header = F,
+                              col.names = c("sample_ID", "read_counts_raw"), row.names = 1)
+rownames(out$combined) <- gsub("_dec_1.fastq.gz", "", rownames(out$combined))
+loss_table <- merge(out$combined, read_counts_raw, by = 0)
+loss_table <- merge(loss_table,
+                    cbind(denoised = rowSums(st.all), removed_chimeras = rowSums(st.all.nochim)),
+                    by.x = "Row.names", by.y = 0)
+
+track <- cbind(loss_ratio(loss_table$reads.in, loss_table$read_counts_raw),  # decontamination
+               loss_ratio(loss_table$reads.out, loss_table$reads.in),        # filtering
+               loss_ratio(loss_table$denoised, loss_table$reads.out),        # denoising
+               loss_ratio(loss_table$removed_chimeras, loss_table$denoised), # remove chimeras
+               loss_ratio(loss_table$removed_chimeras, loss_table$read_counts_raw))        # total
+colnames(track) <- c("decontamination", "filtering", "denoising", "remove_chimeras", "total_loss")
+rownames(track) <- loss_table$Row.names
+head(track)
+
+cdf_data_step_loss <- melt(track,
+                 value.name = "lost_reads")
+colnames(cdf_data_step_loss)[1:2] <- c("sample", "step")
+# violin plot:
+ggplot(cdf_data_step_loss, aes(x=step, y = lost_reads, color = step)) + 
+  geom_violin() +
+  ylim(0,1) +
+  geom_boxplot(width=0.1) +
+  coord_flip() +
+  theme(legend.position="none")
+ggsave("dada2/violin_filter_ratios_per_step.pdf", device = "pdf")
+
+# cdf_data_step_loss <- ddply(cdf_data_step_loss, .(step), transform, ecd=ecdf(lost_reads)(lost_reads))
+ggplot(cdf_data_step_loss, aes(x=lost_reads, col = step)) + 
+  stat_ecdf() +
+  ylab("samples") +
+  xlim(0,1)
+cdf_data_step_loss[is.na(cdf_data_step_loss$lost_reads),]
+loss_table[loss_table$Row.names %in% cdf_data_step_loss$sample[is.na(cdf_data_step_loss$lost_reads)],]
+ggsave("dada2/cfd_filter_ratios_per_step.pdf", device = "pdf")
+
+# save loss table to be used for further stats
+loss_table <- dplyr::transmute(loss_table, Row.names = Row.names, read_counts_raw = read_counts_raw,
+                               decontaminated = reads.in, filtered = reads.out,
+                               denoised = denoised, removed_chimeras = removed_chimeras)
+write.csv(loss_table, "dada2/read_loss_per_step.csv")
+
+
+# assign taxonomy
+library(DECIPHER)
+dna <- DNAStringSet(getSequences(st.all.nochim)) # Create a DNAStringSet from the ASVs
+print("id taxa")
+if (id_taxa_step) {
+  load("/fast/AG_Forslund/rob/references/silva/SILVA_SSU_r138_2019.RData") # CHANGE TO THE PATH OF YOUR TRAINING SET
+  ids <- IdTaxa(dna, trainingSet, processors=10, verbose=FALSE)
+  saveRDS(ids, "dada2/taxa_ids.rds")
+} else {
+  ids <- readRDS("dada2/taxa_ids.rds")
+}
+ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species") # ranks of interest
+# Convert the output object of class "Taxa" to a matrix analogous to the output from assignTaxonomy
+taxid <- t(sapply(ids, function(x) {
+  m <- match(ranks, x$rank)
+  taxa <- x$taxon[m]
+  taxa[startsWith(taxa, "unclassified_")] <- NA
+  taxa
+}))
+colnames(taxid) <- ranks; rownames(taxid) <- getSequences(st.all.nochim)
+taxa <- taxid
+
+if (tree_step) {
+  tree <- build_tree(st.all.nochim)
+  saveRDS(tree, "dada2/tree.rds")
+} else {
+  tree <- readRDS("dada2/tree.rds")
+}
+
+
+# handoff to phyloseq
+library(phyloseq)
+library(Biostrings)
+library(ggplot2)
+theme_set(theme_bw())
+
+if (phyloseq_step) {
+  #add metadata
+  metadata_sub <- read.table("metadata_subramanian_2014_healthy.csv", sep = ",", header = T)
+  rownames(metadata_sub) <- metadata_sub$run_accession
+  all(rownames(metadata_sub) %in% rownames(st.all.nochim))
+  all(rownames(st.all.nochim) %in% rownames(metadata_sub))
+  metadata_sub <- metadata_sub[match(rownames(st.all.nochim), rownames(metadata_sub)),]
+  all(rownames(metadata_sub) == rownames(st.all.nochim))
+  ps <- phyloseq(otu_table(st.all.nochim, taxa_are_rows=FALSE), 
+                 sample_data(metadata_sub), 
+                 tax_table(taxa), tree)
+  dna <- Biostrings::DNAStringSet(taxa_names(ps))
+  names(dna) <- taxa_names(ps)
+  ps <- merge_phyloseq(ps, dna)
+  taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+  # save object
+  saveRDS(ps, file = "/fast/AG_Forslund/rob/studies/16S/subramanian_2014/dada2/phyloseq_subramanian_2014.rds")
+} else {
+  ps <- readRDS("/fast/AG_Forslund/rob/studies/16S/subramanian_2014/dada2/phyloseq_subramanian_2014.rds")
+}
+
+
+
+# compare a-diversity between different groups
+diversity_plots(ps_object = ps, x = "library_name", colour = "age")
+ggsave("dada2/a_div_cohort.pdf", device = "pdf")
+diversity_plots(ps_object = ps, x = "age", colour = "age")
+ggsave("dada2/a_div_age.pdf", device = "pdf")
+diversity_plots(ps_object = ps, x = "age", colour = "log(read_counts_final)")
+ggsave("dada2/a_div_reads.pdf", device = "pdf")
+
+# check metadata in PCoA
+# remove zero count samples
+ps <- prune_samples(sample_sums(ps) >= 10, ps)
+ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
+print("ordination step")
+if(ordination_step) {
+  dist.bray <- phyloseq::distance(ps.prop, method = "bray")
+  dist.unifrac <- phyloseq::distance(ps.prop, method = "wunifrac")
+  # ordinate
+  pcoa_bray <- pcoa(dist.bray)
+  pcoa_unifr <- pcoa(dist.unifrac)
+  tsne_bray <- Rtsne(dist.bray, is_distance = TRUE)
+  tsne_unifrac <- Rtsne(dist.unifrac, is_distance = TRUE)
+  umap <- umap(otu_table(ps.prop))
+  save(pcoa_bray, pcoa_unifr, tsne_bray, tsne_unifrac, umap, dist.bray, dist.unifrac, file = "dada2/ordinations.RData")
+} else {
+  load("dada2/ordinations.RData")
+}
+rownames(metadata_sub) <- metadata_sub$run_accession
+cor(pcoa_bray$vectors,
+    metadata_sub[rownames(pcoa_bray$vectors),c("age", "WHZ", "HAZ", "WAZ", "height", "weight")], use = "complete.obs") %>% head
+cor(pcoa_unifr$vectors,
+    metadata_sub[rownames(pcoa_unifr$vectors),c("age", "WHZ", "HAZ", "WAZ", "height", "weight")], use = "complete.obs") %>% head
+
+
+#PCoA
+# bray-curtis
+p1 <- plot_ordination(ps.prop, pcoa_bray, color="age", title="Bray NMDS") +
+  scale_color_gradientn(name = "age", colors = topo.colors(7))
+p2 <- plot_ordination(ps.prop, pcoa_bray, color="library_name", title="Bray NMDS")
+# unifrac dist:
+p3 <- plot_ordination(ps.prop, pcoa_unifr, color="age", title="Unifrac NMDS") +
+  scale_color_gradientn(name = "age", colors = topo.colors(7))
+p4 <- plot_ordination(ps.prop, pcoa_unifr, color="library_name", title="Unifrac NMDS")
+pf <- grid.arrange(p1, p2, p3, p4, ncol = 2)
+ggsave("dada2/PCoA_age.pdf", device = "pdf", plot = pf)
+
+
+# t-SNE
+tsnedata <- data.frame(tsne_bray$Y) %>%
+  dplyr::rename(tSNE1 = X1, tSNE2 = X2) %>%
+  bind_cols(data.frame(sample_data(ps)))
+ps1 <- ggplot(tsnedata, aes(x = tSNE1, y = tSNE2, color = age)) +
+  geom_point() +
+  theme(aspect.ratio = 1) +
+  scale_color_gradientn(name = "age", colors = topo.colors(7)) + 
+  ggtitle("t-SNE Bray")
+ps2 <- ggplot(tsnedata, aes(x = tSNE1, y = tSNE2, color = library_name)) +
+  geom_point() +
+  theme(aspect.ratio = 1)
+  ggtitle("t-SNE Bray")
+# unifrac
+tsnedata <- data.frame(tsne_unifrac$Y) %>%
+  dplyr::rename(tSNE1 = X1, tSNE2 = X2) %>%
+  bind_cols(data.frame(sample_data(ps)))
+ps3 <- ggplot(tsnedata, aes(x = tSNE1, y = tSNE2, color = age)) +
+  geom_point() +
+  theme(aspect.ratio = 1) +
+  scale_color_gradientn(name = "age", colors = topo.colors(7)) +
+  ggtitle("t-SNE Unifrac")
+ps4 <- ggplot(tsnedata, aes(x = tSNE1, y = tSNE2, color = library_name)) +
+  geom_point() +
+  theme(aspect.ratio = 1) +
+  ggtitle("t-SNE Unifrac")
+psf <- grid.arrange(ps1, ps2, ps3, ps4, ncol = 2)
+ggsave("dada2/tSNE.pdf", device = "pdf", plot = psf)
+
+# UMAP
+umapdata <- umap$layout %>%
+  data.frame() %>%
+  dplyr::rename(UMAP1 = X1, UMAP2 = X2) %>%
+  bind_cols(data.frame(sample_data(ps)))
+pu1 <- ggplot(umapdata, aes(x = UMAP1, y = UMAP2, color = age)) +
+  geom_point() +
+  theme(aspect.ratio = 1) +
+  scale_color_gradientn(name = "age", colors = topo.colors(7)) +
+  ggtitle("UMAP")
+pu2 <- ggplot(umapdata, aes(x = UMAP1, y = UMAP2, color = library_name)) +
+  geom_point() +
+  theme(aspect.ratio = 1) +
+  ggtitle("UMAP")
+puf <- grid.arrange(pu1, pu2, ncol = 2)
+ggsave("dada2/umap.pdf", device = "pdf", plot = puf)
+
+
+# patterns to see: library_name seperates a bit
+# sex shows a tendency, but overlaps
+# age shows a tendency, but not very distinct
+# food needs to be redone
+# best separation with library_name
+# are the age groups equally distributed among the libraries?
+libraries <- unique(metadata_sub$library_name)
+lapply(libraries, function(x) mean(metadata_sub$age[metadata_sub$library_name == x]))
+lapply(libraries, function(x) sum(metadata_sub$library_name == x))
+
+lib_age <- metadata_sub[,c("age", "library_name")]
+colnames(lib_age)[2] <- "library"
+lib_age_total <- data.frame(age = lib_age$age, library = "total")
+lib_age <- rbind(lib_age, lib_age_total)
+# violin plot:
+sample_size = lib_age %>% group_by(library) %>% dplyr::summarize(num=n())
+lib_age <- lib_age %>% 
+  left_join(sample_size) %>%
+  mutate(library = paste0(library, "\n", "n=", num))
+
+# cdf_data_seqlen <- ddply(cdf_data_seqlen, .(Library), transform, ecd=ecdf(seq_length)(seq_length))
+ggplot(lib_age, aes(x=age, col = library)) + 
+  stat_ecdf() +
+  ylab("samples") 
+
+ggplot(data=lib_age, aes(x=age, group=library, fill=library)) +
+  geom_density(adjust=1.5, alpha=.6)
+ggsave("dada2/library_age_density.pdf")
+# test age distribution across libraries with anova:
+res_anova <- aov(age ~ library_name, data = metadata_sub)
+summary(res_anova)
+
+# check age and cohort influence by PERMANOVA
+library(vegan)
+res_per <- adonis2(dist.bray ~ age*library_name, data = data.frame(sample_data(ps)), permutations = 999)
+summary(res_per)
+
+# export to be used with picrust:
+writeXStringSet(ps@refseq, "dada2/ASVs.fasta", format = "fasta")
+otu_table_out <- t(as.data.frame(ps@otu_table))
+write.table(data.frame(OTU = rownames(otu_table_out), otu_table_out), file = "dada2/otu_table.tsv", sep = "\t", row.names = F, quote = F)
