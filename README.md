@@ -1,2 +1,14 @@
 # microage
 Scripts for the publication Global analysis of infant gut microbiota revealed distinctive maturation dynamics across lifestyles
+
+## Application of age index
+Generate count table following the example dada2-Rscript using the SILVA database version 138
+
+```
+# Formatting input data from a phyloseq object
+filtered_cdf <- create_caret_df(ps_filtered, transformation = "compositional", only_multiple_samples = F,
+                filter_features = names(final_model_genus$finalModel$variable.importance),
+                additional_cols = c("Observed", "Shannon"))
+
+# predict microbiome age
+predicted_age = predict(final_model_genus$rf1, newdata = prosper_filtered_cdf$features)
