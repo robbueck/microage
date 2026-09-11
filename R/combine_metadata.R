@@ -7828,6 +7828,106 @@ file.move(final_files_m, "mother_fastq/")
 rm("ena_file", "final_files", "final_samples", "sra_file", mdat_chatz, 
    mdat_chatz_infants, mdat_chatz_mothers, final_files_m, final_samples_m)
 
+## Deng 2025 ##############################################
+setwd(paste(maindir, "shotgun/deng_2025", sep = ""))
+# ena_file <- read.table("fastq-run-info.tsv", sep = "\t", header = T)
+sra_file <- read.table("SraRunTable.csv", sep = ",", header = T) %>%
+  select(-c("Assay.Type", "AvgSpotLen", "BioSampleModel", "Bytes",
+            "Center.Name", "Collection_Date", "Consent", "DATASTORE.filetype",
+            "DATASTORE.provider", "DATASTORE.region", "geo_loc_name_country",
+            "geo_loc_name_country_continent", "geo_loc_name", "HOST",
+            "LibrarySelection", "LibrarySource", "Organism", "Platform",
+            "ReleaseDate", "create_date", "version"))
+sra_file_2 <- read.table("SraRunTable_2.csv", sep = ",", header = T) %>%
+  select(-c("Assay.Type", "AvgSpotLen", "BioSampleModel", "Bytes",
+            "Center.Name", "Collection_Date", "Consent", "DATASTORE.filetype",
+            "DATASTORE.provider", "DATASTORE.region", "geo_loc_name_country",
+            "geo_loc_name_country_continent", "geo_loc_name", "HOST",
+            "LibrarySelection", "LibrarySource", "Organism", "Platform",
+            "ReleaseDate", "create_date", "version"))
+
+mdat_deng <- sra_file %>%
+  mutate(run_accession = Run,
+         # subject_ID = host_subject_id,
+         # infant = grepl("B", host_subject_id),
+         # sample_ID = Submitter_Id,
+         # family_ID = host_subject_id,
+         lifestyle = "non-industrialized",
+         study = "deng_2025",
+         country = "BURKINA_FASO",
+         region = "BURKINA_FASO",
+         .keep = "unused")
+write.csv(mdat_deng, "metadata_deng_2025_healthy.csv")
+
+# move good files from shotgun folder
+final_samples <- mdat_deng$run_accession
+final_files <- c(paste0(final_samples, "_1.fastq.gz"),
+                 paste0(final_samples, "_2.fastq.gz"),
+                 paste0(final_samples, ".fastq.gz"))
+final_files <- final_files[file.exists(final_files)]
+file.move(final_files, "fastq_files/")
+
+
+# clean up
+rm("ena_file", "final_files", "final_samples", "sra_file", mdat_deng, 
+   mdat_deng_infants, mdat_deng_mothers, final_files_m, final_samples_m)
+
+## microtouch #########################################################
+setwd(paste(maindir, "shotgun/microtouch", sep = ""))
+sra_file <- read.table("SraRunTable.csv", sep = ",", header = T) %>%
+  select(-c("Assay.Type", "AvgSpotLen", "BioSampleModel", "Bytes",
+            "Center.Name", "Collection_Date", "Consent", "DATASTORE.filetype",
+            "DATASTORE.provider", "DATASTORE.region", "geo_loc_name_country",
+            "geo_loc_name_country_continent", "geo_loc_name", "HOST", "isolation_source",
+            "lat_lon", "LibraryLayout", "LibrarySelection", "LibrarySource", "Organism",
+            "Platform", "ReleaseDate", "create_date", "version", "sample_type"))
+mdat_1 <- read.table("Ricci_et_al_2024_REV2_Supplementary tables - ST2.tsv", header = T, sep = "\t")
+mdat_2 <- read.table("Ricci_et_al_2024_REV2_Supplementary tables - ST3.tsv", header = T, sep = "\t")
+mdat_3 <- read.table("2147_curated_dates.tsv", header = T, sep = "\t") %>% filter(sample_type == "fecal") %>% 
+  mutate(collection_date = as.Date(collection_date, format = "%d/%m/%Y"),
+         nursery_start_date = as.Date(nursery_start_date, format = "%d/%m/%Y"),
+         day_since_start = as.numeric(collection_date - nursery_start_date),
+         .keep = "unused")
+
+metadata_microtouch <- left_join(sra_file, mdat_1, by = c("Library.Name" = "sample_id"), suffix = c("", "_remove")) %>%
+  left_join(., mdat_2, by = "participant_id", suffix = c("", "_remove")) %>%
+  left_join(., mdat_3, by = c("sample_name" = "sample_id")) %>%
+  select(-ends_with("_remove"), -c("nursery", "nursery_groups", "pet_in_family", "sibling_in_family",
+                                   "unclassified_estimation_percentage", "baby_strepB_prophylaxis",
+                                   "baby_weaning_at_T01", "baby_milk_at_T01", "baby_milk_type_at_T01",
+                                   "adult_uPDI", "adult_original_PDI", "adult_hPDI", "time_point_collapsed",
+                                   "during_atb_atf", "during_or_post_atb_atf")) %>%
+  filter(participant_type != "Pet") %>%
+  mutate(age = age_months * 30,
+         age = age + day_since_start,
+         country = "ITALY",
+         birthmode = case_when(baby_delivery == "Cesarean" ~ "c",
+                               baby_delivery == "Natural" ~ "v",
+                               .default = NA),
+         family_ID = Family_Id,
+         subject_ID = paste(Participant_ID, family_ID, sep = "_"),
+         sample_ID = sample_name,
+         region = "TRENTO",
+         geographic_location_.latitude. = 46.066666,
+         geographic_location_.longitude. = 11.116667,
+         run_accession = Run,
+         study = "microtouch",
+         infant = ifelse(participant_type %in% c("Baby", "Sibling") & age < 3000, yes = NA, no = F),
+         lifestyle = ifelse(is.na(infant), yes = "industrialized", no = "adult"),
+         sex = case_when(participant_type == "Father" ~ "m",
+                         participant_type == "Mother" ~ "f",
+                         .default = NA),
+         .keep = "unused")
+
+metadata_microtouch <- metadata_microtouch %>% filter(age < 730 | age > 6000)
+
+write.csv(metadata_microtouch, "metadata_microtouch_healthy.csv")
+
+
+remove_samples <- sra_file$Run[!sra_file$Run %in% metadata_microtouch$run_accession]
+remove_samples <- paste0("fastq_files/preprocessed", remove_samples)
+file.rename(remove_samples, to = file.path("removed_fastq/", basename(remove_samples)))
+rm(mdat_1, mdat_2, mdat_3, metadata_microtouch, sra_file)
 
 
 # Metadata/studies summary #####################################################

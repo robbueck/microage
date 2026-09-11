@@ -159,7 +159,8 @@ get_lm_list <- function(pred_df, grouping){
                          R2 = summary(list_models)$r.squared)
   RSME_list <- pred_df %>%
     group_by(grouping_x_model_name) %>%
-    dplyr::summarize(RSME = sqrt(mean(age - pred)^2)) %>%
+    dplyr::summarize(RSME = sqrt(mean(age - pred)^2),
+                     n_samples = n()) %>%
     ungroup()
   model_df <- left_join(model_df, RSME_list) %>%
     separate(., grouping_x_model_name, into = c(grouping), sep = "xxx")

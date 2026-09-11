@@ -26,8 +26,9 @@ source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/regression_fu
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/setlists.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/lifestyle_regression_functions.R")
 
-# Switches
+# Switches ######################################
 resample_genus_step <- F
+resample_genus_sick_step <- F
 
 # get the list of instances downsampled to a specific size
 get_list <- function(vl, dfrm, max = NA, study_prob = F) {
@@ -59,8 +60,8 @@ get_test_train_data <- function(test_set, ps, extra_cols = c("Observed", "Shanno
                                 max_samples = NA, max_studies = NA, max_subj = NA) {
   # spit into test/train data
   oldDF <- as(sample_data(ps), "data.frame")
-  trainDF <- subset(oldDF, study != test_set)
-  testDF <- subset(oldDF, study == test_set)
+  trainDF <- subset(oldDF, study != test_set & health == "healthy")
+  testDF <- subset(oldDF, study == test_set | health != "healthy")
   ps_train <- ps
   ps_test <- ps
   rm(ps, oldDF)
@@ -94,7 +95,8 @@ get_test_train_data <- function(test_set, ps, extra_cols = c("Observed", "Shanno
 }
 
 indust_non_indust_preds <- function(test_set, ps, extra_cols = c("Observed", "Shannon"),
-                                max_samples = NA, max_studies = NA, max_subj = NA) {
+                                max_samples = NA, max_studies = NA, max_subj = NA,
+                                run_importances = T) {
   print(test_set)
   test_train_set <- get_test_train_data(test_set, ps, extra_cols,
                                         max_samples = max_samples,
@@ -118,6 +120,7 @@ indust_non_indust_preds <- function(test_set, ps, extra_cols = c("Observed", "Sh
   industrialized_res <- get_predictions(ps_test = test_train_set_industrialized$test, 
                               ps_train = test_train_set_industrialized$train,
                               extra_cols = extra_cols,
+                              run_importances = run_importances,
                               test_set_name = test_set)
   industrialized_preds <- industrialized_res$preds %>%
     select(sample_ID, subject_ID, study, lifestyle, age, pred) %>%
@@ -130,6 +133,7 @@ indust_non_indust_preds <- function(test_set, ps, extra_cols = c("Observed", "Sh
   non_industrialized_res <- get_predictions(ps_test = test_train_set_non_industrialized$test,
                                   ps_train = test_train_set_non_industrialized$train,
                                   extra_cols = extra_cols,
+                                  run_importances = run_importances,
                                   test_set_name = test_set)
   non_industrialized_preds <- non_industrialized_res$preds %>%
     select(sample_ID, subject_ID, study, lifestyle, age, pred) %>%
@@ -178,6 +182,7 @@ get_predictions <- function(ps_test, ps_train, extra_cols = c("Observed", "Shann
                     trControl = tc_grouped,
                     preProcess = c("nzv"),
                     tuneGrid = rfGrid)
+  # write_rds(rf_model, paste("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/downsampled_models/"))
   predictions <- for_caret_list_test$metadata %>%
     mutate(pred = predict(rf_model, newdata = for_caret_list_test$features))
   if(run_importances) {
@@ -203,12 +208,13 @@ get_predictions <- function(ps_test, ps_train, extra_cols = c("Observed", "Shann
               training_data = for_caret_list_train$features))
 }
 
-run_all <- function(ps, n_run){
+run_all <- function(ps, n_run, run_importances = T){
   print(n_run)
   all_studies <- ps@sam_data$study %>% unique()
+  all_studies <- all_studies[!all_studies %in% c( "gibson_2016", "ryan_2019", "kamdar_2020" )]
   names(all_studies) <- all_studies
   preds_imps <- all_studies %>% 
-    future_map(~ indust_non_indust_preds(. ,ps = ps), progress = T)
+    future_map(~ indust_non_indust_preds(. ,ps = ps, run_importances = run_importances), progress = T)
   return(preds_imps)
 }
 
@@ -227,12 +233,12 @@ if (is.null(opt$threads)){
   n_cores <- opt$threads
 }
 
-cl <- makePSOCKcluster(ceiling(n_cores/2))
+cl <- makePSOCKcluster(ceiling(sqrt(n_cores)))
 registerDoParallel(cl)
 getDoParWorkers()
 set.seed(825)
-future::plan(multisession, workers = ceiling(n_cores/2))
-options(ranger.num.threads = ceiling(n_cores/2))
+future::plan(multisession, workers = ceiling(sqrt(n_cores)))
+options(ranger.num.threads = ceiling(sqrt(n_cores)))
 
 # genus data ###################################################################
 
@@ -241,10 +247,54 @@ ps_object_genus_raw <- readRDS("/fast/AG_Forslund/rob/mm_index/merged_data/all/a
 metadata <- ps_object_genus_raw %>%
   sample_data() %>%
   data.frame 
+ps_object_genus_raw@sam_data$health <- "healthy"
+
+# add sick children for prediction:
+ps_sub <- readRDS("/fast/AG_Forslund/rob/mm_index/study_data/subramanian_2014/phyloseq_subramanian_2014_malnurished.rds")
+ps_gehr <- readRDS("/fast/AG_Forslund/rob/mm_index/study_data/gehrig_2019/phyloseq_gehrig_2019_malnurished.rds")
+ps_gehr@sam_data$sample_sum <- sample_sums(ps_gehr)
+ps_sub@sam_data$sample_sum <- sample_sums(ps_sub)
+merged_ps_genus <- merge_phyloseq(ps_sub %>% aggregate_taxa(level = "genus"),
+                                  ps_gehr %>% aggregate_taxa(level = "genus")) %>%
+  subset_samples(., health == "SAM")
+ps_gibson <- readRDS("/fast/AG_Forslund/rob/studies/16S/gibson_2016/dada2/phyloseq_gibson_2016.rds")
+ps_ryan <- readRDS("/fast/AG_Forslund/rob/studies/16S/ryan_2019/dada2/phyloseq_ryan_2019.rds")
+ps_kamdar <- readRDS("/fast/AG_Forslund/rob/studies/16S/kamdar_2020/dada2/phyloseq_kamdar_2020.rds")
+
+merged_ps_preterm <- merge_phyloseq(ps_gibson %>% aggregate_taxa(level = "genus"),
+                                    ps_ryan %>% aggregate_taxa(level = "genus"),
+                                    ps_kamdar %>% aggregate_taxa(level = "genus"))
+
+ps_object_genus_raw_healthy_sick <- merge_phyloseq(merged_ps_genus, merged_ps_preterm, ps_object_genus_raw)
+
+if(resample_genus_sick_step){
+  # permuted_preds_genus <- get_permute_preds(ps = ps_object_genus_raw, blocks = "study")
+  downsampled_genus_preds_sick <- future_map(1:50, ~ run_all(ps = ps_object_genus_raw_healthy_sick, 
+                                                             run_importances = F,
+                                                             n_run = .x))
+  save(downsampled_genus_preds_sick, file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_intra_lifestyle_genus_downsampled_sick.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_intra_lifestyle_genus_downsampled_sick.RData")
+}
+print("finished here")
+
+get_preds <- function(x) {
+  x <- lapply(x, `[[`, "preds") %>% bind_rows()
+}
+downsampled_genus_df <- lapply(downsampled_genus_preds_sick, get_preds) %>%
+  bind_rows(., .id = "source") %>%
+  group_by(sample_ID, subject_ID, study, lifestyle, age) %>%
+  summarize(pred_industrialized = mean(pred_industrialized, na.rm = T),
+            pred_non_industrialized = mean(pred_non_industrialized, na.rm = T),
+            pred_combined = mean(pred_combined, na.rm = T),
+            .groups = "drop")
+save(downsampled_genus_df, 
+     file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/downsampled_genus_df.RData")
 
 
 
 
+# downsampling healthy only #########################################
 tic()
 if(resample_genus_step){
   # permuted_preds_genus <- get_permute_preds(ps = ps_object_genus_raw, blocks = "study")

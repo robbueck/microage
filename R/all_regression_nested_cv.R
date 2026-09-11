@@ -24,6 +24,7 @@ library(ggpubr)
 library(Boruta)
 library(gamlss)
 library(lmtest)
+library(lme4)
 
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/alt_models.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/regression_functions.R")
@@ -35,6 +36,7 @@ nested_cv_family_step <- F
 final_model_family_step <- F
 nested_cv_extra_metadata_step <- F
 final_model_family_extra_metadata_step <- F
+# family level
 nested_cv_family_no_ls_step <- F
 final_model_family_no_ls_step <- F
 nested_cv_family_industrialized_step <- F
@@ -55,14 +57,29 @@ nested_cv_genus_industrialized_rarefied_step <- F
 final_model_genus_industrialized_rarefied_step <- F
 nested_cv_genus_nonindustrialized_rarefied_step <- F
 final_model_genus_nonindustrialized_rarefied_step <- F
+# rarefaction lower value
+nested_cv_genus_no_ls_rarefied_l_step <- F
+final_model_genus_no_ls_rarefied_l_step <- F
+nested_cv_genus_industrialized_rarefied_l_step <- F
+final_model_genus_industrialized_rarefied_l_step <- F
+nested_cv_genus_nonindustrialized_rarefied_l_step <- F
+final_model_genus_nonindustrialized_rarefied_l_step <- F
 
-nested_cv_genus_no_ls_rarefied_l_step <- T
-final_model_genus_no_ls_rarefied_l_step <- T
-nested_cv_genus_industrialized_rarefied_l_step <- T
-final_model_genus_industrialized_rarefied_l_step <- T
-nested_cv_genus_nonindustrialized_rarefied_l_step <- T
-final_model_genus_nonindustrialized_rarefied_l_step <- T
-
+# binned by months
+nested_cv_genus_no_ls_binned_step <- F
+final_model_genus_no_ls_binned_step <- F
+nested_cv_genus_industrialized_binned_step <- F
+final_model_genus_industrialized_binned_step <- F
+nested_cv_genus_nonindustrialized_binned_step <- F
+final_model_genus_nonindustrialized_binned_step <- F
+# within 2-month bins
+nested_cv_genus_no_ls_within_binned_step <- F
+nested_cv_genus_no_ls_within_6binned_step <- T
+final_model_genus_no_ls_within_binned_step <- F
+nested_cv_genus_industrialized_within_binned_step <- F
+final_model_genus_industrialized_within_binned_step <- F
+nested_cv_genus_nonindustrialized_within_binned_step <- F
+final_model_genus_nonindustrialized_within_binned_step <- F
 
 
 # shap analysis:
@@ -154,6 +171,11 @@ get_final_model <- function(ps, transform = "compositional",
                                                   importance = "permutation")
                              )
   )
+  if(is.null(rf_model_list$rf1$trainingData)){
+    training_data <- for_caret_list_train$features
+    training_data$.outcome <- for_caret_list_train$metadata$age
+    rf_model_list$rf1$trainingData <- training_data
+  }
   return(rf_model_list)
 }
 
@@ -305,12 +327,10 @@ if(nested_cv_extra_metadata_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_family_extra_d.RData")
 }
 
-
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_extra_d_nested_cv_point_binary.pdf",
-       plot = ps_nested_cv_extra_d$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_extra_d_nested_cv_heatmap_binary.pdf",
-       plot = ps_nested_cv_extra_d$model_heatmap)
-
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_extra_d_nested_cv_point_binary.pdf",
+#        plot = ps_nested_cv_extra_d$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_extra_d_nested_cv_heatmap_binary.pdf",
+#        plot = ps_nested_cv_extra_d$model_heatmap)
 
 
 if(final_model_family_extra_metadata_step){
@@ -319,6 +339,7 @@ if(final_model_family_extra_metadata_step){
                                                        "lifestyle_industrialized",
                                                        "sex_f", "birthmode_vd"))
   shap_out_family_extra_d <- get_shap_long(final_model_family_extra_d$rf1, features = "important")
+  print("B")
   shap_out_family_extra_d %>%
     filter(abs(shap_value) > 0.01,
            ab_value > 5e-5) %>%
@@ -333,7 +354,6 @@ if(final_model_family_extra_metadata_step){
 } else {
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_all_family_extra_d.RData")
 }
-
 # shap_out_family_extra_d %>%
 #   left_join(.,data.frame(ps_object_family_raw@sam_data), by = "run_accession") %>%
 #   filter(abs(shap_value) > 0.01,
@@ -371,7 +391,6 @@ if(nested_cv_family_no_ls_step){
 }
 toc()
 
-
 if(final_model_family_no_ls_step){
   final_model_family_no_ls <- get_final_model(ps = ps_object_family_raw, extra_cols = c("Observed", "Shannon"))
   shap_out_family_no_ls <- get_shap_long(final_model_family_no_ls$rf1, features = "important")
@@ -400,10 +419,10 @@ shap_out_family_no_ls %>%
 
 
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_point_no_ls.pdf",
-       plot = ps_nested_cv_no_ls$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_heatmap_no_ls.pdf",
-       plot = ps_nested_cv_no_ls$model_heatmap)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_point_no_ls.pdf",
+#        plot = ps_nested_cv_no_ls$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_heatmap_no_ls.pdf",
+#        plot = ps_nested_cv_no_ls$model_heatmap)
 
 # check feature importances:
 create_feature_importance_df <- function(study) {
@@ -428,7 +447,7 @@ create_feature_importance_df <- function(study) {
 
 
 
-# family data for industrialized populations only specific model ##################
+## family data for industrialized populations only specific model ##################
 
 ps_object_family_raw_industrialized <- ps_object_family_raw %>%
   subset_samples(lifestyle == "industrialized")
@@ -471,10 +490,10 @@ if(final_model_family_industrialized_step){
 }
 
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_point_industrialized.pdf",
-       plot = ps_nested_cv_industrialized$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_heatmap_industrialized.pdf",
-       plot = ps_nested_cv_industrialized$model_heatmap)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_point_industrialized.pdf",
+#        plot = ps_nested_cv_industrialized$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_heatmap_industrialized.pdf",
+#        plot = ps_nested_cv_industrialized$model_heatmap)
 
 # check feature importances:
 create_feature_importance_df <- function(study) {
@@ -534,7 +553,7 @@ create_feature_importance_df <- function(study) {
 #   "Peptostreptococcaceae", "Propionibacteriaceae", "Ruminococcaceae", "Streptococcaceae",
 #   "Veillonellaceae")
 
-# family data for non industrialized populaitons only #############################
+## family data for non industrialized populations only #############################
 
 ps_object_family_raw_nonindustrialized <- ps_object_family_raw %>%
   subset_samples(lifestyle != "industrialized")
@@ -576,10 +595,10 @@ if(final_model_family_nonindustrialized_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_nonindustrialized_family.RData")
 }
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_point_nowest.pdf",
-       plot = ps_nested_cv_nonindustrialized$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_heatmap_nowest.pdf",
-       plot = ps_nested_cv_nonindustrialized$model_heatmap)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_point_nowest.pdf",
+#        plot = ps_nested_cv_nonindustrialized$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/family_nested_cv_heatmap_nowest.pdf",
+#        plot = ps_nested_cv_nonindustrialized$model_heatmap)
 
 # check feature importances:
 create_feature_importance_df_nw <- function(study) {
@@ -707,10 +726,10 @@ if(final_model_genus_no_ls_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_no_ls_genus.RData")
 }
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_point_no_ls.pdf",
-       plot = ps_nested_cv_genus_no_ls$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_heatmap_no_ls.pdf",
-       plot = ps_nested_cv_genus_no_ls$model_heatmap)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_point_no_ls.pdf",
+#        plot = ps_nested_cv_genus_no_ls$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_heatmap_no_ls.pdf",
+#        plot = ps_nested_cv_genus_no_ls$model_heatmap)
 
 
 (age_prediction_dotplot <- genus_no_ls_nested_cv_preds %>% 
@@ -732,10 +751,10 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_ne
         legend.position=c(0.8, 0.15),
         legend.title = element_text(size=15),
         legend.text = element_text(size = 13))   )
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_no_ls_point_present.pdf", 
-       width = 10, plot = age_prediction_dotplot)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_no_ls_point_present.png",
-       width = 10, plot = age_prediction_dotplot)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_no_ls_point_present.pdf", 
+#        width = 10, plot = age_prediction_dotplot)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_no_ls_point_present.png",
+#        width = 10, plot = age_prediction_dotplot)
 save(genus_no_ls_nested_cv_preds, age_prediction_dotplot,
      file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/genus_nested_cv_no_ls.RData")
 
@@ -819,12 +838,28 @@ get_gamlss_res <- function(dt, st) {
               exp_var_ls_lin = 1 - deviance(linear_fm) / deviance(linear_intm),
               intercept_lin = summary(linear_fm)$coefficients[3,1]))
 }
-# rest_test <- mclapply(c(complete = "complete", studies), 
+# rest_test <- mclapply(c(complete = "complete", studies),
 #                       function(x) get_gamlss_res(dt = genus_no_ls_nested_cv_preds, st = x))
 # rest_test_df <- do.call(rbind, lapply(rest_test, as.data.frame)) %>%
 #   as.data.frame()
 
 
+### effect of delivery mode:
+bm_data <- genus_no_ls_nested_cv_preds %>% 
+  filter(!is.na(birthmode), lifestyle == "industrialized") %>%
+  mutate(c_section = birthmode == "c") %>%
+  select(age, c_section, study, rf1)
+ggplot(bm_data, aes(x = age, y = (rf1), color = c_section)) +
+  geom_point(size = 0.2) +
+  geom_smooth()
+
+full_model_lin_bm <- lmer(rank(rf1) ~ age + c_section + (1|study),
+                       data = bm_data)
+# is the intercept different?
+intercept_model_lin_bm <- lmer(rank(rf1) ~ age + (1|study),
+                            data = bm_data)
+1 - deviance(full_model_lin_bm) / deviance(intercept_model_lin_bm)
+test_bm <- lrtest(intercept_model_lin_bm, full_model_lin_bm)
 
 
 
@@ -960,7 +995,7 @@ saveRDS(combined_importance_genus_no_ls,
 
 
 
-# genus data for industrialized populaitons only specific model ##################
+## genus data for industrialized populations only specific model ##################
 
 ps_object_genus_raw_industrialized <- ps_object_genus_raw %>%
   subset_samples(lifestyle == "industrialized")
@@ -1011,10 +1046,10 @@ if(final_model_genus_industrialized_step){
 }
 
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_point_industrialized.pdf",
-       plot = ps_nested_cv_genus_industrialized$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_heatmap_industrialized.pdf",
-       plot = ps_nested_cv_genus_industrialized$model_heatmap)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_point_industrialized.pdf",
+#        plot = ps_nested_cv_genus_industrialized$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_heatmap_industrialized.pdf",
+#        plot = ps_nested_cv_genus_industrialized$model_heatmap)
 
 # check feature importances:
 create_feature_importance_df_genus <- function(study) {
@@ -1047,7 +1082,7 @@ ggplot(combined_importance_genus_industrialized, aes(x = reorder(taxon, importan
         panel.grid.minor = element_blank(),
         panel.background = element_blank())
 
-# genus data for non industrialized populations only #############################
+## genus data for non industrialized populations only #############################
 
 ps_object_genus_raw_nonindustrialized <- ps_object_genus_raw %>%
   subset_samples(lifestyle != "industrialized")
@@ -1098,10 +1133,10 @@ if(final_model_genus_nonindustrialized_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_nonindustrialized_genus.RData")
 }
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_point_nowest.pdf",
-       plot = ps_nested_cv_genus_nonindustrialized$correlation)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_heatmap_nowest.pdf",
-       plot = ps_nested_cv_genus_nonindustrialized$model_heatmap)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_point_nowest.pdf",
+#        plot = ps_nested_cv_genus_nonindustrialized$correlation)
+# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nested_cv_heatmap_nowest.pdf",
+#        plot = ps_nested_cv_genus_nonindustrialized$model_heatmap)
 
 # check feature importances:
 create_feature_importance_df_nw_genus <- function(study) {
@@ -1195,7 +1230,7 @@ if(final_model_genus_no_ls_rarefied_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_no_ls_genus_rare_h.RData")
 }
 
-# genus data for industrialized populations only specific model ##################
+## genus data for industrialized populations only specific model ##################
 
 ps_object_genus_rare_h_industrialized <- ps_object_genus_rare_h %>%
   subset_samples(lifestyle == "industrialized")
@@ -1233,7 +1268,7 @@ if(final_model_genus_industrialized_rarefied_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_industrialized_genus_rare_h.RData")
 }
 
-# genus data for non industrialized populations only #############################
+## genus data for non industrialized populations only #############################
 
 ps_object_genus_rare_h_nonindustrialized <- ps_object_genus_rare_h %>%
   subset_samples(lifestyle != "industrialized")
@@ -1270,8 +1305,6 @@ if(final_model_genus_nonindustrialized_rarefied_step){
 } else {
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_nonindustrialized_genus_rare_h.RData")
 }
-
-
 
 
 
@@ -1316,7 +1349,7 @@ if(final_model_genus_no_ls_rarefied_l_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_no_ls_genus_rare_l.RData")
 }
 
-# genus data for industrialized populations only specific model ##################
+## genus data for industrialized populations only specific model ##################
 
 ps_object_genus_rare_l_industrialized <- ps_object_genus_rare_l %>%
   subset_samples(lifestyle == "industrialized")
@@ -1358,7 +1391,7 @@ if(final_model_genus_industrialized_rarefied_l_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_industrialized_genus_rare_l.RData")
 }
 
-# genus data for non industrialized populations only #############################
+## genus data for non industrialized populations only #############################
 
 ps_object_genus_rare_l_nonindustrialized <- ps_object_genus_rare_l %>%
   subset_samples(lifestyle != "industrialized")
@@ -1401,11 +1434,335 @@ if(final_model_genus_nonindustrialized_rarefied_l_step){
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_nonindustrialized_genus_rare_l.RData")
 }
 
+# genus data without lifestyle monthly bins #################################################
+
+print("genus data monthly bins")
+ps_object_genus_raw_months <- readRDS("/fast/AG_Forslund/rob/mm_index/merged_data/all/all_phyloseq_rf_filter_genus.rds") %>%
+  subset_samples(., age <= 730 & age > 1)
+ps_object_genus_raw_months@sam_data$age <- round(ps_object_genus_raw_months@sam_data$age / 30, digits = 0)
+
+print("genus data nolifestyle binned age samples")
+tic()
+if(nested_cv_genus_no_ls_binned_step){
+  genus_no_ls_binned_nested_cv_preds <- studies_all %>% 
+    future_map_dfr(~ get_predictions_nested_cv(. ,ps = ps_object_genus_raw_months,
+                                               prefix = "genus_data_no_ls",
+                                               transform = "compositional",
+                                               extra_cols = c("Observed", "Shannon")))
+  genus_no_ls_binned_nested_cv_preds_long <- genus_no_ls_binned_nested_cv_preds %>%
+    pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+  ps_nested_cv_genus_no_ls_binned <- modelplots(all_results = genus_no_ls_binned_nested_cv_preds_long)
+  save(genus_no_ls_binned_nested_cv_preds, ps_nested_cv_genus_no_ls_binned,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_binned.RData")
+}
+toc()
+
+
+if(final_model_genus_no_ls_binned_step){
+  final_model_genus_no_ls_binned <- get_final_model(ps = ps_object_genus_raw_months, extra_cols = c("Observed", "Shannon"))
+  genus_train_data_binned <- create_caret_df(ps_object = ps_object_genus_raw_months, transformation = "compositional",
+                                      mean_ab_cutoff = 5e-5, study_prevalence_cutoff = 2,
+                                      prevalence_in_study_cutoff = 5,
+                                      additional_cols = c("Observed", "Shannon"),
+                                      only_multiple_samples = F)
+  shap_out_genus_no_ls_binned <- get_shap_long(final_model_genus_no_ls_binned$rf1, 
+                                        features = "important",
+                                        test_data = genus_train_data_binned$features)
+  shap_out_genus_no_ls_binned %>%
+    filter(abs(shap_value) > 0.01,
+           ab_value > 5e-5) %>%
+    ggplot(., aes(y = taxon, x = shap_value, color = ab_value)) +
+    geom_jitter(size = 0.5) +
+    geom_violin() +
+    geom_vline(xintercept = 0) +
+    theme_classic()
+  ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_no_ls_shap.pdf")
+  save(final_model_genus_no_ls_binned, shap_out_genus_no_ls_binned, genus_train_data_binned,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_no_ls_genus_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_no_ls_genus_binned.RData")
+}
+
+# compare performances:
+binned_vs_non_binned <- genus_no_ls_nested_cv_preds %>% select(run_accession, age, rf1, lifestyle, study) %>%
+  left_join(genus_no_ls_binned_nested_cv_preds %>% select(run_accession, rf1), by = "run_accession")
+binned_vs_non_binned %>%
+  ggplot(., aes(x = (rf1.x), y = (rf1.y), color = lifestyle)) +
+  geom_point()
+
+
+
+## genus data for industrialized populaitons only specific model binned ##################
+
+ps_object_genus_raw_months_industrialized <- ps_object_genus_raw_months %>%
+  subset_samples(lifestyle == "industrialized")
+
+print("genus data only for industrialized samples")
+tic()
+if(nested_cv_genus_industrialized_binned_step){
+  genus_industrialized_binned_nested_cv_preds <- industrialized_studies %>% 
+    future_map_dfr(~ get_predictions_nested_cv(. ,ps = ps_object_genus_raw_months_industrialized,
+                                               prefix = "genus_data_industrialized",
+                                               transform = "compositional",
+                                               extra_cols = c("Observed", "Shannon")))
+  genus_industrialized_binned_nested_cv_preds_long <- genus_industrialized_binned_nested_cv_preds %>%
+    pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+  ps_nested_cv_genus_industrialized_binned <- modelplots(all_results = genus_industrialized_binned_nested_cv_preds_long)
+  save(genus_industrialized_binned_nested_cv_preds, ps_nested_cv_genus_industrialized_binned,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_industrialized_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_industrialized_binned.RData")
+}
+toc()
+
+
+if(final_model_genus_industrialized_binned_step){
+  final_model_genus_industrialized_binned <- get_final_model(ps = ps_object_genus_raw_months_industrialized, extra_cols = c("Observed", "Shannon"))
+  genus_train_data_industrialized_binned <- create_caret_df(ps_object = ps_object_genus_raw_months_industrialized, transformation = "compositional",
+                                                     mean_ab_cutoff = 5e-5, study_prevalence_cutoff = 2,
+                                                     prevalence_in_study_cutoff = 5,
+                                                     additional_cols = c("Observed", "Shannon"),
+                                                     only_multiple_samples = F)
+  shap_out_genus_industrialized_binned <- get_shap_long(final_model_genus_industrialized_binned$rf1, 
+                                                 features = "important",
+                                                 test_data = genus_train_data_industrialized_binned$features)
+  shap_out_genus_industrialized_binned %>%
+    filter(abs(shap_value) > 0.01,
+           ab_value > 5e-5) %>%
+    ggplot(., aes(y = taxon, x = shap_value, color = ab_value)) +
+    geom_jitter(size = 0.5) +
+    geom_violin() +
+    geom_vline(xintercept = 0) +
+    theme_classic()
+  ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_industrialized_binned_shap.pdf")
+  
+  save(final_model_genus_industrialized_binned, shap_out_genus_industrialized_binned, genus_train_data_industrialized_binned, 
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_industrialized_genus_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_industrialized_genus_binned.RData")
+}
+
+
+## genus data for non industrialized populations binned by month only #############################
+
+ps_object_genus_raw_nonindustrialized_months <- ps_object_genus_raw_months %>%
+  subset_samples(lifestyle != "industrialized")
+
+print("genus data only for non-industrialized samples binned by month")
+tic()
+if(nested_cv_genus_nonindustrialized_binned_step){
+  genus_nonindustrialized_binned_nested_cv_preds <- nonindustrialized_studies %>% 
+    future_map_dfr(~ get_predictions_nested_cv(. ,ps = ps_object_genus_raw_nonindustrialized_months,
+                                               prefix = "genus_data_nonindustrialized",
+                                               transform = "compositional",
+                                               extra_cols = c("Observed", "Shannon")))
+  genus_nonindustrialized_binned_nested_cv_preds_long <- genus_nonindustrialized_binned_nested_cv_preds %>%
+    pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+  ps_nested_cv_genus_nonindustrialized_binned <- modelplots(all_results = genus_nonindustrialized_binned_nested_cv_preds_long)
+  save(genus_nonindustrialized_binned_nested_cv_preds, ps_nested_cv_genus_nonindustrialized_binned,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_nonindustrialized_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_nonindustrialized_binned.RData")
+}
+toc()
+
+if(final_model_genus_nonindustrialized_binned_step){
+  final_model_genus_nonindustrialized_binned <- get_final_model(ps = ps_object_genus_raw_nonindustrialized_months, extra_cols = c("Observed", "Shannon"))
+  genus_train_data_non_industrialized_binned <- create_caret_df(ps_object = ps_object_genus_raw_nonindustrialized_months, transformation = "compositional",
+                                                         mean_ab_cutoff = 5e-5, study_prevalence_cutoff = 2,
+                                                         prevalence_in_study_cutoff = 5,
+                                                         additional_cols = c("Observed", "Shannon"),
+                                                         only_multiple_samples = F)
+  shap_out_genus_nonindustrialized_binned <- get_shap_long(final_model_genus_nonindustrialized_binned$rf1, 
+                                                    features = "important",
+                                                    test_data = genus_train_data_non_industrialized_binned$features)
+  shap_out_genus_nonindustrialized_binned %>%
+    filter(abs(shap_value) > 0.01,
+           ab_value > 5e-5) %>%
+    ggplot(., aes(y = taxon, x = shap_value, color = ab_value)) +
+    geom_jitter(size = 0.5) +
+    geom_violin() +
+    geom_vline(xintercept = 0) +
+    theme_classic()
+  ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/genus_nonindustrialized_shap_binned.pdf")
+  
+  save(final_model_genus_nonindustrialized_binned, shap_out_genus_nonindustrialized_binned, genus_train_data_non_industrialized_binned,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_nonindustrialized_genus_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/final_nonindustrialized_genus_binned.RData")
+}
+
+# compare binned model performance ##########
+genus_no_ls_nested_cv_preds_long <- genus_no_ls_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+all_lm_list_genus <- get_lm_list(pred_df = genus_no_ls_nested_cv_preds_long,
+                                 grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "combined")
+
+genus_industrialized_nested_cv_preds_long <- genus_industrialized_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+all_lm_list_genus_indust <- get_lm_list(pred_df = genus_industrialized_nested_cv_preds_long,
+                                 grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "industrialized")
+
+genus_nonindustrialized_nested_cv_preds_long <- genus_nonindustrialized_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+all_lm_list_genus_non_indust <- get_lm_list(pred_df = genus_nonindustrialized_nested_cv_preds_long,
+                                        grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "non_industrialized")
+
+
+# binned
+genus_no_ls_binned_nested_cv_preds_long <- genus_no_ls_binned_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+all_lm_list_genus_binned <- get_lm_list(pred_df = genus_no_ls_binned_nested_cv_preds_long,
+                                 grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "combined")
+
+genus_industrialized_binned_nested_cv_preds_long <- genus_industrialized_binned_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+all_lm_list_genus_indust_binned <- get_lm_list(pred_df = genus_industrialized_binned_nested_cv_preds_long,
+                                        grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "industrialized")
+
+genus_nonindustrialized_binned_nested_cv_preds_long <- genus_nonindustrialized_binned_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+all_lm_list_genus_non_indust_binned <- get_lm_list(pred_df = genus_nonindustrialized_binned_nested_cv_preds_long,
+                                            grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "non_industrialized")
+
+
+all_lm_list_genus_comp <- bind_rows(left_join(all_lm_list_genus_binned,
+                                              all_lm_list_genus,
+                                              by = c("study", "lifestyle", "model_name", "training_set"), 
+                                              suffix = c("_binned", "")),
+                                    left_join(all_lm_list_genus_indust_binned,
+                                              all_lm_list_genus_indust,
+                                              by = c("study", "lifestyle", "model_name", "training_set"), 
+                                              suffix = c("_binned", "")),
+                                    left_join(all_lm_list_genus_non_indust_binned,
+                                              all_lm_list_genus_non_indust,
+                                              by = c("study", "lifestyle", "model_name", "training_set"), 
+                                              suffix = c("_binned", "")))
+
+ggplot(all_lm_list_genus_comp, aes(x = R2, y = R2_binned)) +
+  geom_point() +
+  ggpmisc::stat_poly_eq(use_label("R2", "P"),
+               formula = as.formula("rank(y) ~ x"),
+               vstep = 0.1,
+               size = 4) +
+  geom_smooth()
+
+
+
+# genus data without lifestyle withing 2-monthly bins #########################################
+
+print("2 months bins")
+run_in_bins <- function(ps_obj, cutoffs, prefix) {
+  print(cutoffs)
+  oldDF <- as(sample_data(ps_obj), "data.frame") 
+  bin_DF <- subset(oldDF, age >= cutoffs[[1]] & age < cutoffs[2])
+  ps_obj_bin <- ps_obj
+  sample_data(ps_obj_bin) <- sample_data(bin_DF)
+  stds_all <- table(ps_obj_bin@sam_data$study)
+  if(sum(stds_all > 50) < 2) {return(NULL)}
+  res <- names(stds_all) %>%
+    map_dfr(~ get_predictions_nested_cv(. ,ps = ps_obj_bin,
+                                               prefix = paste(prefix, cutoffs[1], sep = "_"),
+                                               transform = "compositional",
+                                               extra_cols = c("Observed", "Shannon")))
+  res$interval <- cutoffs[1]
+  res$n_studies <- length(stds_all)
+  return(res)
+}
+
+intervals <- lapply(seq(0, 660, 60), \(x) c(x, min(x + 60, 720)))
+print("genus data nolifestyle 2month bins")
+tic()
+if(nested_cv_genus_no_ls_within_binned_step){
+  genus_no_ls_nested_cv_2month_bins_list <- lapply(intervals, 
+                                                   function(x) run_in_bins(ps_object_genus_raw,
+                                                                           cutoffs = x, 
+                                                                           prefix = "genus_no_ls_2month_bins"))
+  genus_no_ls_nested_cv_2month_bins <- genus_no_ls_nested_cv_2month_bins_list %>% bind_rows()
+  # genus_no_ls_nested_cv_preds_long <- genus_no_ls_nested_cv_preds %>%
+  #   pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+  # ps_nested_cv_genus_no_ls <- modelplots(all_results = genus_no_ls_nested_cv_preds_long)
+  save(genus_no_ls_nested_cv_2month_bins,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_2month_bins.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_2month_bins.RData")
+}
+toc()
+
+## 6 months binned ############################
+intervals_6 <- lapply(seq(0, 660, 182), \(x) c(x, min(x + 182, 728)))
+if(nested_cv_genus_no_ls_within_6binned_step){
+  genus_no_ls_nested_cv_6month_bins_list <- lapply(intervals_6, 
+                                                   function(x) run_in_bins(ps_object_genus_raw,
+                                                                           cutoffs = x, 
+                                                                           prefix = "genus_no_ls_2month_bins"))
+  genus_no_ls_nested_cv_6month_bins <- genus_no_ls_nested_cv_6month_bins_list %>% bind_rows()
+  # genus_no_ls_nested_cv_preds_long <- genus_no_ls_nested_cv_preds %>%
+  #   pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+  # ps_nested_cv_genus_no_ls <- modelplots(all_results = genus_no_ls_nested_cv_preds_long)
+  save(genus_no_ls_nested_cv_6month_bins,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_6month_bins.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_6month_bins.RData")
+}
+toc()
+
+
+## genus data for industrialized populations only specific model ##################
+
+print("genus data only for industrialized samples in 2 months bins")
+tic()
+if(nested_cv_genus_industrialized_within_binned_step){
+  genus_indust_no_ls_nested_cv_2month_bins_list <- lapply(intervals, 
+                                                   function(x) run_in_bins(ps_object_genus_raw_industrialized,
+                                                                           cutoffs = x,
+                                                                           prefix = "genus_indust_no_ls_2month_bins"))
+  genus_indust_no_ls_nested_cv_2month_bins <- bind_rows(genus_indust_no_ls_nested_cv_2month_bins_list)
+  # genus_industrialized_nested_cv_preds_long <- genus_industrialized_nested_cv_preds %>%
+  #   pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
+  # ps_nested_cv_genus_industrialized <- modelplots(all_results = genus_industrialized_nested_cv_preds_long)
+  save(genus_indust_no_ls_nested_cv_2month_bins,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_indust_no_ls_2month_bins.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_indust_no_ls_2month_bins.RData")
+}
+toc()
+
+
+## genus data for non industrialized populations only #############################
+
+print("genus data only for non-industrialized samples in 2 months bins")
+tic()
+if(nested_cv_genus_nonindustrialized_within_binned_step){
+  genus_non_indust_no_ls_nested_cv_2month_bins_list <- lapply(intervals, 
+                                                          function(x) run_in_bins(ps_object_genus_raw_nonindustrialized,
+                                                                                  cutoffs = x,
+                                                                                  prefix = "genus_non_indust_no_ls_2month_bins"))
+  genus_non_indust_no_ls_nested_cv_2month_bins <- bind_rows(genus_non_indust_no_ls_nested_cv_2month_bins_list)
+  save(genus_non_indust_no_ls_nested_cv_2month_bins,
+       file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_non_indust_no_ls_2month_bins.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_non_indust_no_ls_2month_bins.RData")
+}
+toc()
 
 
 # compare runs #################################################################
 
-family_nested_cv_preds$variation <- "two_years"
 family_no_ls_nested_cv_preds$variation <- "family_no_ls"
 family_industrialized_nested_cv_preds$variation <- "industrialized"
 family_industrialized_nested_cv_preds$lifestyle_industrialized <- 1
@@ -1419,8 +1776,7 @@ picrust_gbm_nested_cv_preds$variation <- "gbms"
 picrust_gmm_nested_cv_preds$variation <- "gmms"
 
 
-all_models <- bind_rows(family_nested_cv_preds,
-                    family_no_ls_nested_cv_preds,
+all_models <- bind_rows(family_no_ls_nested_cv_preds,
                     family_industrialized_nested_cv_preds,
                     genus_nested_cv_preds,
                     family_nonindustrialized_nested_cv_preds,

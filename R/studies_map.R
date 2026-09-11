@@ -81,6 +81,7 @@ study_names_shotgun <- study_names_shotgun[study_names_shotgun != "selma_royo_20
 study_names_shotgun <- study_names_shotgun[study_names_shotgun != "tett_2019"]
 study_names_shotgun <- study_names_shotgun[study_names_shotgun != "bottino_2025"]
 study_names_shotgun <- study_names_shotgun[study_names_shotgun != "portlock_2024"]
+study_names_shotgun <- study_names_shotgun[study_names_shotgun != "deng_2025"]
 # study_names_shotgun <- study_names_shotgun[study_names_shotgun != "parnanen_2018"]
 
 

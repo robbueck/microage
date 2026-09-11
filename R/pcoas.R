@@ -24,6 +24,8 @@ library(gamlss)
 library(gratia)
 library(gamlss.ggplots)
 library(ape)
+library(furrr)
+
 
 
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/functions.R")
@@ -32,15 +34,14 @@ source("/fast/AG_Forslund/rob/mm_index/R_scripts/setlists.R")
 options(future.globals.maxSize = 25000 * 1024^2)
 
 # Switches #######################
-ordination_step <- F
-ordination_genus_step <- F
-ordination_genus_rare_step <- F
+ordination_step <- T
+ordination_genus_step <- T
+ordination_genus_rare_step <- T
 adonis_genus_step_1 <- F
 adonis_genus_step_2 <- F
 adonis_genus_step_3 <- F
-adonis_genus_step_4 <- T
+adonis_genus_step_4 <- F
 resampling_step <- F
-
 
 n_cores <- 5
 
@@ -133,9 +134,8 @@ if (is.null(opt$threads)){
 
 # alpha div genus data ##############################################################
 ps_object_genus_raw <- readRDS("/fast/AG_Forslund/rob/mm_index/merged_data/all/all_phyloseq_rf_filter_genus.rds")
-ps_object_genus_raw <- subset_samples(ps_object_genus_raw, age <= 730) %>%
-  prune_samples(samples = (sample_sums(.) != 0)) %>%
-  subset_samples(., age > 0)
+ps_object_genus_raw <- subset_samples(ps_object_genus_raw, age <= 730 & age > 1) %>%
+  prune_samples(samples = (sample_sums(.) != 0)) 
 
 # filter as in RF modelling:
 ps_object_comp_rf_comp <- ps_object_genus_raw %>%
@@ -285,7 +285,9 @@ left_join(meta_df, mdat_rf %>% select(run_accession, diversity_shannon_rf), by =
   facet_wrap(~lifestyle)
 
 
-## study rarefaction ##############
+## study, individual, sample rarefaction ##############
+# studies
+print("study rarefaction")
 subsample_fn <- function(n_cat, df, cat = "study") {
   stds <- sample(unique(df[[cat]]), n_cat)
   df %>% filter(.data[[cat]] %in% stds) %>%
@@ -339,6 +341,7 @@ LR.test(n_taxa_studies_reduced, n_taxa_studies_full)
 1 - deviance(n_taxa_studies_full) / deviance(n_taxa_studies_reduced)
 
 # for individuals
+print("individual rarefaction")
 otu_table_lfst %>% select(Lifestyle, subject_ID) %>% table %>% `>`(0) %>% rowSums()
 n_taxa_industrialized_subjects_rarefy <- map_dfr(rep(1:18*100, each = 10), function(x) {
   otu_table_lfst %>%
@@ -374,8 +377,9 @@ LR.test(n_taxa_subjects_reduced, n_taxa_subjects_full)
 
 
 # for samples
+print("sample rarefaction")
 otu_table_lfst$Lifestyle %>% table
-n_taxa_industrialized_samples_rarefy <- map_dfr(rep(1:110*100, each = 10), function(x) {
+n_taxa_industrialized_samples_rarefy <- map_dfr(rep(1:109*100, each = 10), function(x) {
   otu_table_lfst %>%
     filter(Lifestyle == "Industrialized") %>%
     select(-Lifestyle, -study, -subject_ID, -age) %>%
@@ -406,6 +410,112 @@ n_taxa_samples_reduced <- gamlss(n_taxa ~ pb(n_samples),
                                   trace = F)
 LR.test(n_taxa_samples_reduced, n_taxa_samples_full)
 1 - deviance(n_taxa_samples_full) / deviance(n_taxa_samples_reduced)
+
+## downsampling to equal age distributions #####################################
+print("downsampling to equal age distributions")
+# dfrm <- otu_tbl_df
+# vl <- "study"
+get_list <- function(vl, dfrm, study_prob = F) {
+  lst <- lapply(c(industrialized = "Industrialized", non_industrialized = "Non-industrialized"),
+                function(x) {dfrm %>%
+                    filter(Lifestyle == x) %>%
+                    pull(vl) %>% unique}) # get all ids for that lifestyle
+  len <- lapply(lst, length) %>% unlist %>% min(c(.), na.rm = T)
+  if(study_prob) {  #downsample the category to more equal study sizes
+    probs <- dfrm %>% group_by(study) %>%
+      mutate(prob = 1/length(unique(!!sym(vl)))) %>%
+      ungroup() %>%
+      select(prob, !!sym(vl)) %>%
+      distinct() %>%
+      column_to_rownames(vl)
+    # print(lst)
+    # lapply(lst, function(x) print(probs[x,]))
+    final_list <- lapply(lst, function(x) sample(x, len, prob = probs[x,]))
+  } else {
+    final_list <- lapply(lst, function(x) sample(x, len))
+  }
+  return(final_list)
+}
+downsampling_age_dist <- function(otu_tbl_df) {
+  stds <- get_list("study", otu_tbl_df)
+  df_red <- otu_tbl_df %>%
+    filter(study %in% stds$non_industrialized | study %in% stds$industrialized) # subsample studies
+  sbjcts <- get_list("subject_ID", otu_tbl_df, study_prob = T)
+  df_red_sb <- df_red %>%
+    filter(subject_ID %in% sbjcts$non_industrialized | subject_ID %in% sbjcts$industrialized) # subsample individuals
+  df_red_y <- filter(df_red_sb, age <= 365) # same distribuition for above and below one year respectively
+  df_red_o <- filter(df_red_sb, age > 365)
+  smpls_y <- get_list("sample_ID", df_red_y, study_prob = T)
+  df_red_y_smp <- df_red_y %>%
+    filter(sample_ID %in% smpls_y$non_industrialized | sample_ID %in% smpls_y$industrialized)
+  if(length(table(df_red_o$Lifestyle)) > 1) {
+    smpls_o <- get_list("sample_ID", df_red_o, study_prob = T)
+    df_red_o_smp <- df_red_o %>%
+      filter(Lifestyle == "non_industrialized" | sample_ID %in% smpls_o$industrialized) %>%
+      filter(Lifestyle == "industrialized" | sample_ID %in% smpls_o$non_industrialized) # subsample samples
+    df_red_smp <- rbind(df_red_y_smp, df_red_o_smp)
+  } else {
+    print("No old samples found for one Lifestyle")
+    df_red_smp <- df_red_y_smp
+  }
+  df_red_smp <- df_red_smp %>%
+    select(where(~ !is.numeric(.x) || sum(.x, na.rm = TRUE) > 0))
+  return(df_red_smp)
+}
+unique_taxa_per_ls <- function(df) {
+  df %>% select(-c("study", "subject_ID", "sample_ID", "age", "sample_sum")) %>%
+    group_by(Lifestyle) %>%
+    summarise(across(everything(), ~ sum(.))) %>%
+    column_to_rownames("Lifestyle") %>%
+    `==` (0) %>%
+    rowSums()
+}
+plan(multisession, workers = 8)
+n_ls_specific_taxa <- future_map_dfr(1:1000, function(x) {
+  otu_table_lfst %>%
+    downsampling_age_dist() %>%
+    unique_taxa_per_ls()
+}, .progress = T)
+n_ls_specific_taxa <- n_ls_specific_taxa %>%
+  mutate(`non-Industrialized` = Industrialized,
+         Industrialized = `Non-industrialized`) %>%
+  select(-`Non-industrialized`) %>%
+  pivot_longer(c("Industrialized", "non-Industrialized"), names_to = "Lifestyle",
+               values_to = "count")
+n_ls_specific_taxa %>% 
+  ggplot(., aes(x = Lifestyle, y = count, color = Lifestyle)) +
+  geom_violin() +
+  ylim(0,NA)
+
+# non-rarefied data:
+# otu_table_lfst_raw <- data.frame(ps_object_genus_raw@otu_table %>% t()) %>%
+#   rownames_to_column("run_accession") %>%
+#   left_join(mdat_all) %>%
+#   column_to_rownames("run_accession")
+# n_ls_specific_taxa_raw <- future_map_dfr(1:1000, function(x) {
+#   otu_table_lfst_raw %>%
+#     downsampling_age_dist() %>%
+#     unique_taxa_per_ls()
+# }, .progress = T)
+# n_ls_specific_taxa_raw <- n_ls_specific_taxa_raw %>%
+#   mutate(abc = Industrialized,
+#          Industrialized = `Non-industrialized`,
+#          `Non-industrialized` = abc) %>%
+#   select(-abc)
+# n_ls_specific_taxa_raw %>% pivot_longer(c("Industrialized", "Non-industrialized"), names_to = "Lifestyle",
+#                                     values_to = "taxa") %>%
+#   ggplot(., aes(x = Lifestyle, y = taxa, color = Lifestyle)) +
+#   geom_violin() +
+#   ylim(0,NA)
+# 
+# bind_rows(n_ls_specific_taxa %>% mutate(run = "rarefied"),
+#           n_ls_specific_taxa_raw %>% mutate(run = "raw")) %>%
+#   pivot_longer(c("Industrialized", "Non-industrialized"), names_to = "Lifestyle",
+#                values_to = "taxa") %>%
+#   ggplot(., aes(x = Lifestyle, y = taxa, color = Lifestyle)) +
+#   geom_violin() +
+#   ylim(0,NA) +
+#   facet_wrap(~run)
 
 
 ## check unclassified counts: #################
@@ -550,6 +660,48 @@ rest_test_df <- do.call(rbind, lapply(rest_test, as.data.frame)) %>%
   as.data.frame()
 
 only_raman  <- get_gamlss_res(dt = meta_df, st = "raman_2019")
+
+### for revision ###############
+# within raman
+dt_ram = meta_df %>% filter(study == "raman_2019", lifestyle == "non_industrialized") %>% 
+  mutate(country_b_sa = country %in% c("BANGLADESH", "SOUTH_AFRICA")) %>%
+  select(diversity_shannon, age, lifestyle_industrialized, country_b_sa)
+
+f_model_ram <- gamlss(diversity_shannon ~ pb(age) + country_b_sa,
+                  data = dt_ram,
+                  trace = F)
+ls_model_ram <- gamlss(diversity_shannon ~ pb(age),
+                   data = dt_ram,
+                   trace = F)
+LR.test(ls_model_ram, f_model_ram, print = F)
+1 - deviance(f_model_ram) / deviance(ls_model_ram)
+
+# within Bangladesh
+dt_bangl = meta_df %>% filter(country == "BANGLADESH") %>% 
+  mutate(raman = study == "raman_2019") %>%
+  select(diversity_shannon, age, raman, study)
+
+#gehrig
+f_model_bang_g <- gamlss(diversity_shannon ~ pb(age) + raman,
+                      data = dt_bangl %>% filter(study != "subramanian_2014"),
+                      trace = F)
+ls_model_bang_g <- gamlss(diversity_shannon ~ pb(age),
+                       data = dt_bangl %>% filter(study != "subramanian_2014"),
+                       trace = F)
+LR.test(ls_model_bang_g, f_model_bang_g, print = F)
+1 - deviance(f_model_bang_g) / deviance(ls_model_bang_g)
+
+#subramanian
+f_model_bang_s <- gamlss(diversity_shannon ~ pb(age) + raman,
+                         data = dt_bangl %>% filter(study != "gehrig_2019"),
+                         trace = F)
+ls_model_bang_s <- gamlss(diversity_shannon ~ pb(age),
+                          data = dt_bangl %>% filter(study != "gehrig_2019"),
+                          trace = F)
+LR.test(ls_model_bang_s, f_model_bang_s, print = F)
+1 - deviance(f_model_bang_s) / deviance(ls_model_bang_s)
+
+
 # check with rank transformation
 # rest_test_rank <- mclapply(c(complete = "complete", studies),
 #                       function(x) get_gamlss_res(dt = meta_df %>%
@@ -572,30 +724,42 @@ alpha_div_sliding_window <- map_dfr(seq(0, max(meta_df$age) - sliding_window_siz
   meta_df_filt <- meta_df %>%
     filter(age < x + sliding_window_size, age >= x)# sliding window
   if (min(table(meta_df_filt$lifestyle)) < 20) {return(tibble())}
-  meta_df_filt %>%
+  res <- meta_df_filt %>%
     rstatix::wilcox_test(diversity_shannon ~ lifestyle,
                          detailed = T,
                          alternative = "greater",
                          ref.group = "industrialized") %>%
     mutate(sliding_window = x + sliding_window_size/2,
            n_total = n1 + n2)
+  mean_shannon <- meta_df_filt %>% group_by(lifestyle) %>% 
+    summarize(mean_shannon = mean(diversity_shannon)) 
+  res$delta_shannon <- mean_shannon$mean_shannon[mean_shannon$lifestyle == "industrialized"] - mean_shannon$mean_shannon[mean_shannon$lifestyle != "industrialized"]
+  return(res)
 }) %>%   rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
   mutate(set = "Complete dataset")
+alpha_div_sliding_window %>% filter(sliding_window <= 200) %>% pull(delta_shannon) %>% mean()
+alpha_div_sliding_window %>% filter(sliding_window > 200) %>% pull(delta_shannon) %>% mean()
 
 alpha_div_sliding_window_no_raman <- map_dfr(seq(0, max(meta_df$age) - sliding_window_size, by = 7), function(x) {
   meta_df_filt <- meta_df %>%
     filter(age < x + sliding_window_size, age >= x,
            study != "raman_2019")# sliding window
   if (min(table(meta_df_filt$lifestyle)) < 20) {return(tibble())}
-  meta_df_filt %>%
+  res <- meta_df_filt %>%
     rstatix::wilcox_test(diversity_shannon ~ lifestyle,
                          detailed = T,
                          alternative = "greater",
                          ref.group = "industrialized") %>%
     mutate(sliding_window = x + sliding_window_size/2,
            n_total = n1 + n2)
+  mean_shannon <- meta_df_filt %>% group_by(lifestyle) %>% 
+    summarize(mean_shannon = mean(diversity_shannon)) 
+  res$delta_shannon <- mean_shannon$mean_shannon[mean_shannon$lifestyle == "industrialized"] - mean_shannon$mean_shannon[mean_shannon$lifestyle != "industrialized"]
+  return(res)
 }) %>% rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
   mutate(set = "No Raman et al. 2019")
+alpha_div_sliding_window_no_raman %>% filter(sliding_window <= 200) %>% pull(delta_shannon) %>% mean()
+alpha_div_sliding_window_no_raman %>% filter(sliding_window > 200) %>% pull(delta_shannon) %>% mean()
 
 # bind_rows(alpha_div_sliding_window, alpha_div_sliding_window_no_raman) %>%
 #   ggplot(aes(x = sliding_window, y = estimate, color = p.adj < 0.05,
@@ -609,6 +773,7 @@ save(a_div_s_genus, meta_df, alpha_div_sliding_window, alpha_div_sliding_window_
      n_taxa_industrialized_studies_rarefy, n_taxa_non_industrialized_studies_rarefy,
      n_taxa_industrialized_subjects_rarefy, n_taxa_non_industrialized_subjects_rarefy,
      n_taxa_industrialized_samples_rarefy, n_taxa_non_industrialized_samples_rarefy,
+     n_ls_specific_taxa,
      file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.RData")
 
 
@@ -1518,108 +1683,108 @@ important_features_g <- readRDS("/fast/AG_Forslund/rob/mm_index/R_scripts/regres
   mutate(lifestyle_importance = lifestyle,
          .keep = "unused")
 
-importance_prevalence_lifestyle_g <- left_join(abundance_lifestyle_g, prevalence_lifestyle_g, by = c("Genus", "lifestyle")) %>%
-  full_join(important_features_g, ., by = c("taxon" = "Genus"))
-
-
-importance_prevalence_lifestyle_g %>%
-  filter(!is.na(importance)) %>%
-  # pivot_longer(., cols = c("abundance", "prevalence"), names_to = "name", values_to = "value") %>% 
-  ggplot(., aes(x = importance, y = prevalence, color = lifestyle)) +
-  geom_point(alpha = 0.8) +
-  facet_wrap(~lifestyle_importance) +
-  ylim(0,1) +
-  theme_minimal()
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_importantce_genus.pdf")
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_importantce_genus.png")
-
-importance_prevalence_lifestyle_g %>%
-  group_by(taxon, lifestyle, abundance, prevalence) %>%
-  summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
-                                             "industrialized" %in% lifestyle_importance ~ "industrialized",
-                                             "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
-  ggplot(., aes(x = prevalence, y = log(abundance), color = lifestyle_importance)) +
-  geom_point() +
-  facet_grid(~lifestyle) +
-  theme_classic()
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_important_features_genus.pdf")
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_important_features_genus.png")
+# importance_prevalence_lifestyle_g <- left_join(abundance_lifestyle_g, prevalence_lifestyle_g, by = c("Genus", "lifestyle")) %>%
+#   full_join(important_features_g, ., by = c("taxon" = "Genus"))
+# 
+# 
+# importance_prevalence_lifestyle_g %>%
+#   filter(!is.na(importance)) %>%
+#   # pivot_longer(., cols = c("abundance", "prevalence"), names_to = "name", values_to = "value") %>% 
+#   ggplot(., aes(x = importance, y = prevalence, color = lifestyle)) +
+#   geom_point(alpha = 0.8) +
+#   facet_wrap(~lifestyle_importance) +
+#   ylim(0,1) +
+#   theme_minimal()
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_importantce_genus.pdf")
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_importantce_genus.png")
+# 
+# importance_prevalence_lifestyle_g %>%
+#   group_by(taxon, lifestyle, abundance, prevalence) %>%
+#   summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
+#                                              "industrialized" %in% lifestyle_importance ~ "industrialized",
+#                                              "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
+#   ggplot(., aes(x = prevalence, y = log(abundance), color = lifestyle_importance)) +
+#   geom_point() +
+#   facet_grid(~lifestyle) +
+#   theme_classic()
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_important_features_genus.pdf")
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/abundance_prevalence_important_features_genus.png")
 
 # which taxa differ between the lifestyles?
-diff_imp_taxa_g <- importance_prevalence_lifestyle_g %>%
-  group_by(taxon, lifestyle, abundance, prevalence) %>%
-  summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
-                                             "industrialized" %in% lifestyle_importance ~ "industrialized",
-                                             "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
-  filter(lifestyle_importance != "both")
-
-ps_object_genus_comp%>%
-  otu_table() %>%
-  t() %>%
-  data.frame() %>%
-  select(unique(diff_imp_taxa_g$taxon)) %>%
-  cbind(meta_df[,c("subject_ID", "lifestyle", "study", "age")]) %>%
-  pivot_longer(.,cols = unique(diff_imp_taxa_g$taxon), names_to = "taxon", values_to = "abundance") %>%
-  filter(taxon %in% c("Lactobacillus", "Monoglobus", "Prevotella", "Catenibacterium", "Rothia", "Dialister")) %>%
-  ggplot(., aes(x = age, y = (abundance), fill = lifestyle, color = lifestyle, group = lifestyle)) +
-  geom_point(size = 0.3, alpha = 0.2) +
-  geom_smooth() +
-  geom_smooth(color = "black", size = 0.2) +
-  facet_wrap(~taxon, scales = "free_y") +
-  theme_minimal()
-# facet_grid(~lifestyle)
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_diff_important_features_genus.pdf")
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_diff_important_features_genus.png")
+# diff_imp_taxa_g <- importance_prevalence_lifestyle_g %>%
+#   group_by(taxon, lifestyle, abundance, prevalence) %>%
+#   summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
+#                                              "industrialized" %in% lifestyle_importance ~ "industrialized",
+#                                              "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
+#   filter(lifestyle_importance != "both")
+# 
+# ps_object_genus_comp%>%
+#   otu_table() %>%
+#   t() %>%
+#   data.frame() %>%
+#   select(unique(diff_imp_taxa_g$taxon)) %>%
+#   cbind(meta_df[,c("subject_ID", "lifestyle", "study", "age")]) %>%
+#   pivot_longer(.,cols = unique(diff_imp_taxa_g$taxon), names_to = "taxon", values_to = "abundance") %>%
+#   filter(taxon %in% c("Lactobacillus", "Monoglobus", "Prevotella", "Catenibacterium", "Rothia", "Dialister")) %>%
+#   ggplot(., aes(x = age, y = (abundance), fill = lifestyle, color = lifestyle, group = lifestyle)) +
+#   geom_point(size = 0.3, alpha = 0.2) +
+#   geom_smooth() +
+#   geom_smooth(color = "black", size = 0.2) +
+#   facet_wrap(~taxon, scales = "free_y") +
+#   theme_minimal()
+# # facet_grid(~lifestyle)
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_diff_important_features_genus.pdf")
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_diff_important_features_genus.png")
 
 # and which are the same?
-sim_imp_taxa_g <- importance_prevalence_lifestyle_g %>%
-  group_by(taxon, lifestyle, abundance, prevalence) %>%
-  summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
-                                             "industrialized" %in% lifestyle_importance ~ "industrialized",
-                                             "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
-  filter(lifestyle_importance == "both")
-ps_object_genus_comp%>%
-  otu_table() %>%
-  t() %>%
-  data.frame() %>%
-  select(unique(sim_imp_taxa_g$taxon)) %>%
-  cbind(meta_df[,c("subject_ID", "lifestyle", "study", "age")]) %>%
-  pivot_longer(.,cols = unique(sim_imp_taxa_g$taxon), names_to = "taxon", values_to = "abundance") %>%
-  filter(taxon %in% c("Bifidobacterium", "Faecalibacterium", "Ruminococcus", "Lachnospira", "Staphylococcus")) %>%
-  ggplot(., aes(x = age, y = (abundance), color = lifestyle, group = lifestyle)) +
-  geom_point(size = 0.3, alpha = 0.2) +
-  geom_smooth() +
-  geom_smooth(color = "black", size = 0.2) +
-  facet_wrap(~taxon, scales = "free_y") +
-  theme_minimal()
-# facet_grid(~lifestyle)
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_common_important_features_genus.pdf")
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_common_important_features_genus.png")
-
-# for presentation
-prensent_imp_taxa_g <- importance_prevalence_lifestyle_g %>%
-  group_by(taxon, lifestyle, abundance, prevalence) %>%
-  summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
-                                             "industrialized" %in% lifestyle_importance ~ "industrialized",
-                                             "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
-  filter(lifestyle_importance == "both")
-ps_object_genus_comp%>%
-  otu_table() %>%
-  t() %>%
-  data.frame() %>%
-  select(unique(c("Bifidobacterium", "Prevotella", "Ruminococcus", "Lactobacillus", "Staphylococcus"))) %>%
-  cbind(meta_df[,c("subject_ID", "lifestyle", "study", "age")]) %>%
-  pivot_longer(.,cols = unique(c("Bifidobacterium", "Prevotella", "Ruminococcus", "Lactobacillus")), names_to = "taxon", values_to = "abundance") %>%
-  # filter(taxon %in% c("Bifidobacterium", "Prevotella", "Ruminococcus", "Lactobacillus", "Staphylococcus")) %>%
-  ggplot(., aes(x = age, y = abundance, color = lifestyle, group = lifestyle)) +
-  geom_point(size = 0.3, alpha = 0.2) +
-  geom_smooth() +
-  geom_smooth(color = "black", size = 0.2) +
-  facet_wrap(~taxon, scales = "free_y") +
-  theme_minimal()
-  # facet_grid(~lifestyle)
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_important_features_genus_present.pdf",
-       height = 5, width = 6)
+# sim_imp_taxa_g <- importance_prevalence_lifestyle_g %>%
+#   group_by(taxon, lifestyle, abundance, prevalence) %>%
+#   summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
+#                                              "industrialized" %in% lifestyle_importance ~ "industrialized",
+#                                              "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
+#   filter(lifestyle_importance == "both")
+# ps_object_genus_comp%>%
+#   otu_table() %>%
+#   t() %>%
+#   data.frame() %>%
+#   select(unique(sim_imp_taxa_g$taxon)) %>%
+#   cbind(meta_df[,c("subject_ID", "lifestyle", "study", "age")]) %>%
+#   pivot_longer(.,cols = unique(sim_imp_taxa_g$taxon), names_to = "taxon", values_to = "abundance") %>%
+#   filter(taxon %in% c("Bifidobacterium", "Faecalibacterium", "Ruminococcus", "Lachnospira", "Staphylococcus")) %>%
+#   ggplot(., aes(x = age, y = (abundance), color = lifestyle, group = lifestyle)) +
+#   geom_point(size = 0.3, alpha = 0.2) +
+#   geom_smooth() +
+#   geom_smooth(color = "black", size = 0.2) +
+#   facet_wrap(~taxon, scales = "free_y") +
+#   theme_minimal()
+# # facet_grid(~lifestyle)
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_common_important_features_genus.pdf")
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_common_important_features_genus.png")
+# 
+# # for presentation
+# prensent_imp_taxa_g <- importance_prevalence_lifestyle_g %>%
+#   group_by(taxon, lifestyle, abundance, prevalence) %>%
+#   summarise(lifestyle_importance = case_when(length(lifestyle_importance) > 1 ~ "both",
+#                                              "industrialized" %in% lifestyle_importance ~ "industrialized",
+#                                              "non_industrialized" %in% lifestyle_importance ~ "non_industrialized")) %>% 
+#   filter(lifestyle_importance == "both")
+# ps_object_genus_comp%>%
+#   otu_table() %>%
+#   t() %>%
+#   data.frame() %>%
+#   select(unique(c("Bifidobacterium", "Prevotella", "Ruminococcus", "Lactobacillus", "Staphylococcus"))) %>%
+#   cbind(meta_df[,c("subject_ID", "lifestyle", "study", "age")]) %>%
+#   pivot_longer(.,cols = unique(c("Bifidobacterium", "Prevotella", "Ruminococcus", "Lactobacillus")), names_to = "taxon", values_to = "abundance") %>%
+#   # filter(taxon %in% c("Bifidobacterium", "Prevotella", "Ruminococcus", "Lactobacillus", "Staphylococcus")) %>%
+#   ggplot(., aes(x = age, y = abundance, color = lifestyle, group = lifestyle)) +
+#   geom_point(size = 0.3, alpha = 0.2) +
+#   geom_smooth() +
+#   geom_smooth(color = "black", size = 0.2) +
+#   facet_wrap(~taxon, scales = "free_y") +
+#   theme_minimal()
+#   # facet_grid(~lifestyle)
+# ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_important_features_genus_present.pdf",
+#        height = 5, width = 6)
 
 
 
@@ -1647,61 +1812,6 @@ ps_object_genus_comp%>%
 ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/figures/lifestyle_important_features_genus_no_ls.pdf")
 
 
-
-# metadeconfounder #############################################################
-
-library(metadeconfoundR)
-metadata_metadec <- ps_object_family_comp %>% sample_data %>%
-  data.frame %>% 
-  mutate(lifestyle_industrialized = ifelse(lifestyle == "industrialized", yes = 1, no = 0)) %>%
-  select(lifestyle_industrialized, study, age)
-otu_matrix_all <- ps_object_family_comp %>% otu_table() %>% data.frame %>% t %>% data.frame
-
-metad_all <- metadeconfoundR::MetaDeconfound(featureMat = otu_matrix_all,
-                                             metaMat = metadata_metadec,
-                                             fixedVar = c("age"),
-                                             returnLong = T,
-                                             collectMods = T,
-                                             DCutoff = 0.05,
-                                             randomVar = c("study"),
-                                             nnodes = 4)
-# Formula: rank(FeatureValue) ~ Status + (1 | Dataset)
-performance::r2(metad_all$collectedMods$Leuconostocaceae$lifestyle_industrialized$age$full)
-
-# metad_all %>% filter(status != "NS") %>% filter(abs(Ds) > 0.1) %>% View(.)
-build_heat_intermed_data <- BuildHeatmap(metad_all, intermedData = T, d_cutoff = 0.05, q_cutoff = 0.05)
-ggplot(build_heat_intermed_data, aes(x = metaVariable, y = feature)) +
-  geom_tile(aes(fill = Ds), color = "black") +
-  scale_fill_gradient2(
-    low = "blue",
-    mid = "white",
-    high = "red",
-    midpoint = 0,
-    guide = guide_colorbar (raster = F),
-    limits = c(-1,1)) +
-  geom_text(aes(label=stars),
-            size=2,
-            key_glyph = "point") +
-  guides(color = guide_legend(override.aes = list(shape = 8) ) ) +
-  theme_classic() +
-  theme(axis.text.x = element_text(size = 12,
-                                   angle = 90,
-                                   hjust = 1,
-                                   vjust = 0.3),
-        axis.text.y = element_text(size = 12,
-                                   angle = 0,
-                                   hjust = 1,
-                                   vjust = 0.35),
-        plot.title.position = "plot",
-        plot.title = element_text(hjust = 0),
-        plot.subtitle=element_text(size=8)) +
-  labs(title="Summarizing heatmap",
-       subtitle="FDR-values: < 0.001 = **, < 0.01 = *, < 0.1 = * ",
-       x = "",
-       y = "") 
-ggsave("/fast/AG_Forslund/rob/mm_index/merged_data/all/diff_abund_families_lifestyle.pdf")
-save(otu_matrix_all, metadata_metadec, metad_all, build_heat_intermed_data,
-     file = "/fast/AG_Forslund/rob/mm_index/R_scripts/metadeconf_fail.RData")
 
 
 

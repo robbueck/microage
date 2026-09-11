@@ -82,12 +82,15 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/16S_study_locatio
 # Figure 2 #####################################################################
 ## A: Alpha div ##############
 load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.RData")
+meta_df %>% filter(study == "raman_2019") %>% select(lifestyle, country) %>% table
 meta_df_noraman <- meta_df %>%
   mutate(Lifestyle = ifelse(lifestyle == "industrialized",
                             yes = "Industrialized",
                             no = "non-Industrialized"),
          group = "No Raman") %>%
-  filter(study != "raman_2019", Lifestyle == "non-Industrialized")
+  filter(# !study %in% c("raman_2019", "gehrig_2019", "subramanian_2014"), 
+         !country %in% c("BANGLADESH", "SOUTH_AFRICA"),
+         Lifestyle == "non-Industrialized")
 linetypes_1 <- c("No Raman" = "88")
 (a_div_s_genus <- ggplot(meta_df %>% mutate(Lifestyle = ifelse(lifestyle == "industrialized",
                                                                yes = "Industrialized",
@@ -109,8 +112,8 @@ linetypes_1 <- c("No Raman" = "88")
     # guides(color = guide_legend(order = 1),         # color legend first, keep title
     #        linetype = guide_legend(order = 2, title = NULL)) +# linetype legend second, no title) +
     # ggtitle("A)") +
-    labs(x = "Chronological Age [Days]",
-         y = "Shannon Diversity (Genus)",
+    labs(x = "Chronological age [days]",
+         y = "Shannon diversity (genus)",
          title = NULL) +
     theme(axis.title.x = element_text(size = 16),
           axis.text.x = element_text(size = 14),
@@ -127,7 +130,6 @@ linetypes_1 <- c("No Raman" = "88")
                                    margins = "x",             
                                    groupFill = TRUE,
                                   size = 5))
-
 ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.png",
        width = 11, height = 6, plot = a_div_s_genus_hist)
 
@@ -135,7 +137,7 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_prese
 (a_div_diff <- bind_rows(alpha_div_sliding_window, alpha_div_sliding_window_no_raman) %>%
    mutate(Samples = n_total,
           p_val = ifelse(p.adj < 0.05, yes = "< 0.05", no = "> 0.05")) %>%
-   ggplot(aes(x = sliding_window, y = estimate, color = set, alpha = p_val, 
+   ggplot(aes(x = sliding_window, y = delta_shannon, color = set, alpha = p_val, 
               group = set,
               size = Samples)) +
    geom_point() +
@@ -154,8 +156,8 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_prese
           alpha = guide_legend(oder = 2, override.aes = list(size = 5)),
           size = guide_legend(order = 3)) +
    labs(title = NULL,
-        y = "\U0394 Shannon Diversity [I - NI]",
-        x = "Chronological age [Days]") +
+        y = "\U0394 Shannon diversity [I - NI]",
+        x = "Chronological age [days]") +
    theme(axis.title.x = element_text(size = 16),
          axis.text.x = element_text(size = 14),
          axis.title.y = element_text(size = 16),
@@ -201,7 +203,13 @@ plot_pcoa_data %>% select(PC1, PC2, PC3, PC4, sample_sum, age, lifestyle, shanno
                                                  display = "gradient",
                                                  title.position = "top",
                                                  barwidth = 10),
-                          colors = wes_palette("Zissou1", type = "continuous"))+
+                          colors = wes_palette("Zissou1", type = "continuous")) +
+    ggnewscale::new_scale_color() +
+    stat_ellipse(data = plot_pcoa_data %>% filter(age <= 200),
+                 alpha = 1, 
+                 aes(color = Lifestyle),
+                 show.legend = F) +
+    scale_color_manual(values = fixed_colors) +
     coord_equal() +
     annotate(geom = "text", x = min(plot_pcoa_data$PC1) * -0.005,  # Adjust position
              y = max(plot_pcoa_data$PC2) * 0.9,
@@ -225,6 +233,7 @@ plot_pcoa_data %>% select(PC1, PC2, PC3, PC4, sample_sum, age, lifestyle, shanno
 
 (pcoa_lifestyle <- ggplot(plot_pcoa_data, aes(x = PC1, y = PC2, color = Lifestyle)) +
     geom_point(alpha = 0.8, size = 0.3) +
+    stat_ellipse(alpha = 1) +
     scale_size_manual(values = c(0.3, 5)) +
     scale_color_manual(values = fixed_colors) +
     guides(color = guide_legend(override.aes = list(size = 3, alpha = 1))) +
@@ -270,16 +279,22 @@ legends <- cowplot::plot_grid(legend_ls, legend_age, nrow = 1)
                                                          labels = c("A)", "B)"),
                                                          label_size = 18,
                                                          label_fontface = "plain"),
+                                      NULL,
                                       cowplot::plot_grid(pcoa_lifestyle,
                                                          pcoa_age + theme(legend.position='hidden'),
+                                                         rel_widths = c(1, 1),
                                                          nrow = 1,
                                                          labels = c("C)", "D)"),
                                                          label_size = 18,
+                                                         label_x = c(0, -0.005),
                                                          label_fontface = "plain"),
                                       legends,
-                                     rel_heights = c(0.9, 1, 0.15), ncol = 1))
+                                     rel_heights = c(0.9, 0.1, 1, 0.15), ncol = 1))
 
 cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_2_combined.png", 
+                   fig_2_combined,dpi = 900,
+                   bg = "white", base_height = 14, base_width = 14)
+cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_2_combined.pdf", 
                    fig_2_combined,dpi = 900,
                    bg = "white", base_height = 14, base_width = 14)
 
@@ -383,8 +398,8 @@ plot_data_no_raman <- genus_no_ls_nested_cv_preds %>%
     # direction = "horizontal",
     # position = "bottom")) +
     labs(title = NULL,
-         x = "Chronological Age [days]",
-         y = "Microbial Age [days]") +
+         x = "Chronological age [days]",
+         y = "Microbial age [days]") +
     theme(axis.title.x = element_text(size = 16),
           axis.text.x = element_text(size = 14),
           axis.title.y = element_text(size = 16),
@@ -425,11 +440,15 @@ df_p_val_lifestyle_genus <- lifestyle_lm_list_genus %>%
   rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
   rstatix::add_significance(p.col = "p.adj", cutpoints = c(0, 1e-03, 0.01, 0.05, 0.1, 1)) %>% 
   rstatix::add_xy_position(x = "Lifestyle", dodge = 0.75,
-                           step.increase = 0.6) %>%
+                           step.increase = 0.2) %>%
   mutate(y.position = ifelse(Lifestyle == "Industrialized",
                              yes = y.position - 0.002,
                              no = y.position))
   # rstatix::add_xy_position(x = "Training_set", dodge = 0.8) 
+
+lifestyle_lm_list_genus %>% group_by(Lifestyle, Training_set) %>%
+  summarize(mean = mean(R2),
+            median = median(R2))
 
 library(ggbeeswarm)
 (ls_performance <- ggplot(lifestyle_lm_list_genus, aes(x=Lifestyle, y = R2)) +
@@ -450,8 +469,8 @@ library(ggbeeswarm)
     labs(title = NULL,
          x = "Validation set",
          y = bquote("Performance ["~R^2~"]"),
-         color = "Training Set",
-         fill = "Training Set") +
+         color = "Training set",
+         fill = "Training set") +
     add_pvalue(df_p_val_lifestyle_genus,
                label = "{p.adj.signif}",
                label.size = 4.5,
@@ -459,7 +478,7 @@ library(ggbeeswarm)
                xmin = "xmin",
                xmax = "xmax",
                show.legend = FALSE) +
-    ylim(0, 1.3) +
+    ylim(0, 1) +
     theme(axis.title.x = element_text(size = 16),
           axis.text.x = element_text(size = 14),
           axis.title.y = element_text(size = 16),
@@ -486,6 +505,9 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figur
                    fig_3_combined, dpi = 900,
                    bg = "white", base_height = 7.6, base_width = 14)
 
+cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_3_combined.pdf", 
+                   fig_3_combined, dpi = 900,
+                   bg = "white", base_height = 7.6, base_width = 14)
 
 
 # Figure 4 ####################################################################
@@ -554,7 +576,7 @@ table(taxa_vs_ls) %>% `==` (0) %>% rowSums()
                         size = 5,
                         alpha = 1))) +
     labs(title = NULL,
-        x = "Feature Importance",
+        x = "Feature importance",
         y = NULL) +
     facet_grid(~ model,
                 scales = "free_x") +
@@ -723,6 +745,9 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figur
                    fig_4_combined, dpi = 900,
                    bg = "white", base_height = 9, base_width = 14)
 
+cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_4_combined.pdf", 
+                   fig_4_combined, dpi = 900,
+                   bg = "white", base_height = 9, base_width = 14)
 
 
 # Fig 5: #######################################################################
@@ -893,7 +918,7 @@ shap_vals_combined %>%
     scale_fill_manual(values = fixed_colors) +
     facet_wrap(~display_taxon, nrow = 5, ncol = 1) +
     labs(title = NULL,
-         x = "Age [Months]",
+         x = "Age [months]",
          y = "Prevalence") +
     theme(axis.text.x = element_text(size = 14),
           axis.title.x = element_text(size = 16),
@@ -922,6 +947,9 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/selected_prevalen
   rel_widths = c(2, 1)))
 
 cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_5_combined.png", 
+                   fig_5_combined, dpi = 900,
+                   bg = "white", base_height = 8.15, base_width = 14)
+cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_5_combined.pdf", 
                    fig_5_combined, dpi = 900,
                    bg = "white", base_height = 8.15, base_width = 14)
 
@@ -953,8 +981,8 @@ fixed_colors_sick <- c(fixed_colors_sick, `non-Industrialized SAM` = "#812B8C", 
     scale_fill_manual(values = fixed_colors_sick,
                       name = "Lifestyle and health") +
    labs(title = NULL,
-        x = "Chronological Age [days]",
-        y = "Microbial Age [days]") +
+        x = "Chronological age [days]",
+        y = "Microbial age [days]") +
     facet_wrap(~training_set) +
     theme(axis.title.x = element_text(size = 16),
           axis.text.x = element_text(size = 13),
@@ -999,6 +1027,7 @@ pvals_maz_mal <- all_preds_combined %>%
     stat_eye(aes(fill = lifestyle_health), position = position_dodge(1), scale = 0.9,
                  .width = c(0, 0.5, 0.95), adjust = 1, shape = 23, point_size = 2,
                  side = "both") +
+    scale_y_continuous(breaks = c(-5, -2.5, 0, 2.5, 5)) +
     scale_fill_manual(values = fixed_colors_sick,
                       name = "Lifestyle and health",
                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
@@ -1042,8 +1071,8 @@ pvals_maz_mal <- all_preds_combined %>%
                      name = "Lifestyle and health") +
    # coord_equal() +
    labs(title = NULL,
-        x = "Chronological Age [days]",
-        y = "Microbial Age [days]") +
+        x = "Chronological age [days]",
+        y = "Microbial age [days]") +
    xlim(0, NA) +
    facet_wrap(~training_set) +
    theme(axis.title.x = element_text(size = 16),
@@ -1161,7 +1190,7 @@ high_effect_taxa_mal <- mean_shap_diff_mal %>% filter(abs(diff_shap) > 10) %>% p
                          low = c("#4662D7FF", "#36AAF9FF", "#1AE4B6FF"),
                          high = c("#FABA39FF", "#F66B19FF", "#CB2A04FF")) +
     labs(title = "SAM",
-         x = "Chronological age [Months]") +
+         x = "Chronological age [months]") +
     theme(axis.text.x = element_text(size = 12),
           axis.title.x = element_text(size = 16),
           axis.text.y = element_markdown(size = 12),
@@ -1221,7 +1250,7 @@ high_effect_taxa <- mean_shap_diff_preterm %>% filter(abs(diff_shap) > 3) %>% pu
                          low = c("#4662D7FF", "#36AAF9FF", "#1AE4B6FF"),
                          high = c("#FABA39FF", "#F66B19FF", "#CB2A04FF")) +
     labs(title = "Preterm",
-         x = "Chronological age [Weeks]") +
+         x = "Chronological age [weeks]") +
     theme(axis.text.x = element_text(size = 12),
           axis.title.x = element_text(size = 16),
           axis.text.y = element_markdown(size = 12),
@@ -1251,35 +1280,112 @@ high_effect_taxa <- mean_shap_diff_preterm %>% filter(abs(diff_shap) > 3) %>% pu
 # combine and save plot
 cowplot::set_null_device("agg") # pdf, png, cairo, agg (on max-cluster)
 fig_6_combined <- cowplot::plot_grid(cowplot::plot_grid(mal_pred_age, mal_maz_diff, 
-                                                        nrow = 1,
+                                                        preterms_pred_age, preterm_maz_diff,
+                                                        nrow = 2,
                                                         rel_widths = c(1.5, 1),
-                                                        labels = c("A)", "B)"),
+                                                        labels = c("A)", "B)", "C)", "D)"),
                                                         label_size = 18,
                                                         label_y = 1.02,
+                                                        label_x = c(0, 0, -0.005, -0.01),
+                                                        align = "vh",
+                                                        axis = "tblr",
                                                         label_fontface = "plain"),
-                                     cowplot::plot_grid(preterms_pred_age, preterm_maz_diff, 
-                                                        nrow = 1,
-                                                        rel_widths = c(1.5, 1),
-                                                        labels = c("C)", "D)"),
-                                                        label_size = 18,
-                                                        label_y = 1.02,
-                                                        label_fontface = "plain"),
+                                     # NULL,
+                                     # cowplot::plot_grid(preterms_pred_age, preterm_maz_diff, 
+                                     #                    nrow = 1,
+                                     #                    rel_widths = c(1.5, 1),
+                                     #                    labels = c("C)", "D)"),
+                                     #                    label_size = 18,
+                                     #                    label_y = 1.02,
+                                     #                    label_fontface = "plain"),
                                      get_legend(legend_plot),
+                                     NULL,
                                      cowplot::plot_grid(heatmap_mal, heatmap_preterm,
                                                         rel_widths = c(1, 1.2),
                                                         labels = c("E)", "F)"),
                                                         label_size = 18,
                                                         label_y = 1.02,
+                                                        label_x = c(0.005, 0),
                                                         label_fontface = "plain"),
-                                     nrow = 4, rel_heights = c(1, 1, 0.2, 1.2))
+                                     ncol = 1, rel_heights = c(2, 0.2, 0.1, 1.2))
 
 
 cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_6_combined.png", 
                    fig_6_combined, dpi = 900,
-                   bg = "white", base_height = 10.26, base_width = 14)
+                   bg = "white", base_height = 11.5, base_width = 14)
+cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_6_combined.pdf", 
+                   fig_6_combined, dpi = 900,
+                   bg = "white", base_height = 11.5, base_width = 14)
 
 
 # sorted out ################
+
+#########################################################
+pcoa_lifestyle_age_present <- ggplot(plot_pcoa_data, aes(x = PC1, y = PC2, fill = age)) +
+  geom_point(alpha = 0.8, size = 0.6, shape = 21, color = "white") +
+  scale_fill_gradientn(guide = guide_colorbar(direction = "horizontal",
+                                              display = "gradient",
+                                              title.position = "top",
+                                              barwidth = 10),
+                       name = "Age [days]",
+                       colors = wes_palette("Zissou1", type = "continuous")) +
+  geom_smooth(aes(color = Lifestyle), size = 3) +
+  scale_color_manual(values = fixed_colors) +
+  guides(color = guide_legend(override.aes = list(size = 3, alpha = 1))) +
+  coord_equal() +
+  labs(title = NULL,
+       x = paste0("PC 1 (", explained_var[1], "%)"),
+       y = paste0("PC 2 (", explained_var[2], "%)"),
+       fill = "Age [days]") +
+  theme(axis.title.x = element_text(size = 16),
+        axis.text.x = element_text(size = 14),
+        axis.title.y = element_text(size = 16),
+        axis.text.y = element_text(size = 14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        # legend.position = c(0.83, 0.9),
+        # legend.spacing.y = unit(100, 'pt'),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15))
+
+#################################################################################
+(prevalence_plot_present <- prev_per_month %>%
+   mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized", no = "non-Industrialized")) %>%
+   left_join(., short_taxa_names, by = c("OTU" = "taxon")) %>% #pull(display_taxon) %>% unique %>% sort
+   filter(display_taxon %in% selected_taxa) %>%
+   ggplot(., aes(x = month, y = prev, color = Lifestyle, fill = Lifestyle)) +
+   geom_point(alpha = 0.5) +
+   geom_smooth(method = "loess", alpha = 0) +
+   scale_color_manual(values = fixed_colors, 
+                      guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1),
+                                           direction = "vertical",
+                                           position = "bottom",
+                                           title.position = "left")) +
+   scale_y_continuous(breaks = c(0, 0.5, 1)) +
+   scale_fill_manual(values = fixed_colors) +
+   facet_wrap(~display_taxon, nrow = 5, ncol = 1) +
+   labs(title = NULL,
+        x = "Age [months]",
+        y = "Prevalence") +
+   theme(axis.text.x = element_text(size = 14),
+         axis.title.x = element_text(size = 16),
+         axis.text.y = element_text(size = 14),
+         axis.title.y = element_text(size = 16),
+         legend.text = element_text(size = 14),
+         legend.title = element_text(size = 14),
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(),
+         panel.background = element_blank(),
+         panel.grid.major.y = element_blank(),
+         strip.text = element_text(size = 14, face = "italic"),
+         strip.background = element_blank()))
+
+cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_6_combined.pdf", 
+                   fig_6_combined, dpi = 900,
+                   bg = "white", base_height = 11.5, base_width = 14)
+
+
 # shap_cors_filt %>%
 #   group_by(display_taxon, model) %>%
 #   summarize(R2 = mean(R2),

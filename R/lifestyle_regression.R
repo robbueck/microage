@@ -22,14 +22,16 @@ library(ggprism)
 library(Boruta)
 library(lme4)
 library(lmtest)
-library(MatchIt)
+# library(MatchIt)
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/alt_models.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/regression_functions.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/setlists.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/lifestyle_regression_functions.R")
 
 # Switches ###############
-dataset_nested_cv_genus_step <- F
+dataset_nested_cv_genus_step <- T
+dataset_nested_cv_family_step <- F
+dataset_nested_cv_genus_2months_bins_step <- F
 shap_step <- F
 ks_step <- F
 
@@ -118,17 +120,17 @@ lifestyle_lm_list_genus <- lifestyle_lm_list_genus %>%
          lifestyle = factor(lifestyle, levels = c("industrialized", "non_industrialized")))
 
 # what is the effect of sample_sum on the model?
-lifestyle_lm_list_genus %>% pivot_longer(cols = c("R2", "R2_sample_sum"), names_to = "model", values_to = "R2") %>%
-  ggplot(.,aes(x = lifestyle, y = R2, color = training_set, fill = model)) +
-  geom_boxplot(alpha = 0.5) +
-  xlab("Test set") +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75)) +
-  theme_classic()
-lifestyle_lm_list_genus %>% pivot_longer(cols = c("R2", "R2_sample_sum"), names_to = "model", values_to = "R2") %>%
-  rstatix::group_by(lifestyle, training_set) %>%
-  rstatix::wilcox_test(R2 ~ model, paired = T) %>%
-  rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
-  rstatix::add_significance(p.col = "p.adj", cutpoints = c(0, 1e-03, 0.01, 0.05, 0.1, 1))
+# lifestyle_lm_list_genus %>% pivot_longer(cols = c("R2", "R2_sample_sum"), names_to = "model", values_to = "R2") %>%
+#   ggplot(.,aes(x = lifestyle, y = R2, color = training_set, fill = model)) +
+#   geom_boxplot(alpha = 0.5) +
+#   xlab("Test set") +
+#   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75)) +
+#   theme_classic()
+# lifestyle_lm_list_genus %>% pivot_longer(cols = c("R2", "R2_sample_sum"), names_to = "model", values_to = "R2") %>%
+#   rstatix::group_by(lifestyle, training_set) %>%
+#   rstatix::wilcox_test(R2 ~ model, paired = T) %>%
+#   rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
+#   rstatix::add_significance(p.col = "p.adj", cutpoints = c(0, 1e-03, 0.01, 0.05, 0.1, 1))
   
 
 # genus_industrialized_nested_cv_preds_long
@@ -202,6 +204,251 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/lifestyl
        width = 10, plot = ls_performance)
 save(lifestyle_lm_list_genus, ls_performance,
      file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfomance_genus.RData")
+
+# family model #############################################
+ps_object_family_raw <- readRDS("/fast/AG_Forslund/rob/mm_index/merged_data/all/all_phyloseq_rf_filter_family.rds") %>%
+  subset_samples(., age <= 730 & age > 1) 
+
+print("family data industrialized datasets")
+tic()
+if(dataset_nested_cv_family_step){
+  lifestyle_predictions_family <- c("industrialized", "non_industrialized") %>% 
+    future_map_dfr(~ get_predictions_lifestyle(. ,ps = ps_object_family_raw))
+  save(lifestyle_predictions_family, file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_lifestyle_pred_family.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_lifestyle_pred_family.RData")
+}
+toc()
+# compare with prediction from same lifestyle:
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_family_industrialized.RData")
+family_industrialized_nested_cv_preds_long <- family_industrialized_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1"), names_to = "model_name", values_to = "pred" ) %>%
+  mutate(training_set = "industrialized")
+
+industrialized_lm_list_family <- get_lm_list(pred_df = family_industrialized_nested_cv_preds_long,
+                                            grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "industrialized")
+
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_family_nonindustrialized.RData")
+family_nonindustrialized_nested_cv_preds_long <- family_nonindustrialized_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1"), names_to = "model_name", values_to = "pred" ) %>%
+  mutate(training_set = "non_industrialized")
+nonindustrialized_lm_list_family <- get_lm_list(pred_df = family_nonindustrialized_nested_cv_preds_long, 
+                                               grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "non_industrialized")
+
+# load combined model:
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_family_no_ls.RData")
+family_nested_cv_preds_long <- family_no_ls_nested_cv_preds %>%
+  pivot_longer(cols = c("rf1"), names_to = "model_name", values_to = "pred" ) %>%
+  mutate(training_set = "combined")
+all_lm_list_family <- get_lm_list(pred_df = family_nested_cv_preds_long, 
+                                 grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "combined")
+
+# merge model outputs
+lifestyle_predictions_family <- lifestyle_predictions_family %>%
+  mutate(model_name = "rf1") %>%
+  mutate(training_set = ifelse(lifestyle == "industrialized", yes = "non_industrialized", no = "industrialized"))
+lifestyle_lm_list_family <- get_lm_list(pred_df = lifestyle_predictions_family, grouping = c("study", "lifestyle", "model_name")) %>%
+  mutate(training_set = ifelse(lifestyle == "industrialized", yes = "non_industrialized", no = "industrialized")) %>%
+  rbind(., industrialized_lm_list_family, nonindustrialized_lm_list_family, all_lm_list_family)
+
+lifestyle_lm_list_family <- lifestyle_lm_list_family %>%
+  mutate(training_set = factor(training_set, levels = c("non_industrialized", "combined", "industrialized")),
+         lifestyle = factor(lifestyle, levels = c("industrialized", "non_industrialized")))
+
+# stat test (stay with R2, RSME performs worse)
+df_p_val_lifestyle_family <- lifestyle_lm_list_family %>%
+  # lifestyle_lm_list_genus %>%
+  filter(study != "bender_2016") %>%
+  arrange(study) %>%
+  mutate(training_set = factor(training_set)) %>%
+  rstatix::group_by(lifestyle) %>%
+  rstatix::wilcox_test(R2 ~ training_set, paired = T) %>%
+  rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
+  rstatix::add_significance(p.col = "p.adj", cutpoints = c(0, 1e-03, 0.01, 0.05, 0.1, 1)) %>% 
+  rstatix::add_xy_position(x = "lifestyle", dodge = 0.8) 
+
+ls_performance_family <- ggplot(lifestyle_lm_list_family, aes(x=lifestyle, y = R2)) +
+  geom_boxplot(aes(fill = training_set)) +
+  # ylim(0, 1) +
+  xlab("Test set") +
+  add_pvalue(df_p_val_lifestyle_family,
+             label = "{p.adj.signif}",
+             # step.group.by = "variation",
+             step.increase = 0.05,
+             tip.length = 0.01,
+             # bracket.nudge.y = 0.02,
+             xmin = "xmin", 
+             xmax = "xmax",
+             show.legend = FALSE) +
+  ylim(0,NA) +
+  theme(
+    axis.title.x = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.title.y = element_text(size = 16),
+    axis.text.y = element_text(size = 14),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    legend.text = element_text(size = 15),
+    legend.title = element_text(size = 15))
+
+save(lifestyle_lm_list_genus, ls_performance, lifestyle_lm_list_family,
+     file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfomance_genus.RData")
+
+
+## comparison predictions genus vs family level #############################
+combined_family <- bind_rows(family_nested_cv_preds_long, lifestyle_predictions_family,
+                             family_nonindustrialized_nested_cv_preds_long, 
+                             family_industrialized_nested_cv_preds_long) %>% 
+  select(lifestyle, study, training_set, run_accession, age, pred)
+combined_genus <- bind_rows(genus_nested_cv_preds_long, lifestyle_predictions_genus,
+                           genus_nonindustrialized_nested_cv_preds_long, 
+                           genus_industrialized_nested_cv_preds_long) %>%
+  select(lifestyle, study, training_set, run_accession, age, pred)
+combined_genus_family <- left_join(combined_family, combined_genus,
+          by = c("lifestyle", "study", "training_set", "run_accession", "age"),
+          suffix = c("_family", "_genus"))
+ggplot(combined_genus_family, aes(x = pred_genus, y = pred_family, color = lifestyle)) +
+  geom_point(size = 0.3, alpha = 0.2) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~training_set) +
+  coord_equal()
+combined_genus_family %>%
+  group_by(lifestyle, training_set) %>%
+  rstatix::cor_test(pred_family, pred_genus, method = "spearman")
+
+### per study performance #######################
+left_join(lifestyle_lm_list_family, lifestyle_lm_list_genus, 
+          by = c("study", "lifestyle", "model_name", "training_set"),
+          suffix = c("_family", "_genus")) %>%
+  ggplot(., aes(x = R2_genus, y = R2_family, color = lifestyle)) +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~training_set) +
+  coord_equal()
+
+# 2 months binned model #############################
+print("genus data 2 months bins")
+run_in_bins <- function(ps_obj, cutoffs, prefix) {
+  print(cutoffs)
+  oldDF <- as(sample_data(ps_obj), "data.frame") 
+  bin_DF <- subset(oldDF, age >= cutoffs[[1]] & age < cutoffs[2])
+  ps_obj_bin <- ps_obj
+  sample_data(ps_obj_bin) <- sample_data(bin_DF)
+  stds_all <- unique(ps_obj_bin@sam_data$study)
+  res <- c("industrialized", "non_industrialized") %>% 
+    future_map_dfr(~ get_predictions_lifestyle(. ,ps = ps_obj))
+  res$interval <- cutoffs[1]
+  res$n_studies <- length(stds_all)
+  return(res)
+}
+intervals <- lapply(seq(0, 660, 60), \(x) c(x, min(x + 60, 720)))
+tic()
+
+if(dataset_nested_cv_genus_2months_bins_step){
+  lifestyle_predictions_genus_2months_bins_list <- lapply(intervals, 
+                                                   function(x) run_in_bins(ps_object_genus_raw,
+                                                                           cutoffs = x))
+  lifestyle_predictions_genus_2months_bins <- lifestyle_predictions_genus_2months_bins_list %>% bind_rows()
+  save(lifestyle_predictions_genus_2months_bins, file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_lifestyle_pred_genus_2months_binned.RData")
+} else {
+  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_lifestyle_pred_genus_2months_binned.RData")
+}
+toc()
+
+# compare with prediction from same lifestyle:
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_indust_no_ls_2month_bins.RData")
+genus_2month_bins_industrialized_nested_cv_preds_long <- genus_indust_no_ls_nested_cv_2month_bins %>%
+  pivot_longer(cols = c("rf1"), names_to = "model_name", values_to = "pred" ) %>%
+  mutate(training_set = "industrialized")
+
+industrialized_lm_list_genus_2months_bins <- get_lm_list(pred_df = genus_2month_bins_industrialized_nested_cv_preds_long,
+                                             grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "industrialized")
+
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_non_indust_no_ls_2month_bins.RData")
+genus_non_indust_no_ls_nested_cv_2month_bins_long <- genus_non_indust_no_ls_nested_cv_2month_bins %>%
+  pivot_longer(cols = c("rf1"), names_to = "model_name", values_to = "pred" ) %>%
+  mutate(training_set = "non_industrialized")
+nonindustrialized_lm_list_genus_2months_bins <- get_lm_list(pred_df = genus_non_indust_no_ls_nested_cv_2month_bins_long, 
+                                                grouping = c("study", "lifestyle", "model_name")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "non_industrialized")
+
+# load combined model:
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls_2month_bins.RData")
+genus_no_ls_nested_cv_2month_bins_long <- genus_no_ls_nested_cv_2month_bins %>%
+  pivot_longer(cols = c("rf1"), names_to = "model_name", values_to = "pred" ) %>%
+  mutate(training_set = "combined")
+all_lm_list_genus_2months_bins <- get_lm_list(pred_df = genus_no_ls_nested_cv_2month_bins_long, 
+                                  grouping = c("study", "lifestyle", "model_name", "interval")) %>%
+  filter(model_name == "rf1") %>%
+  mutate(training_set = "combined")
+ggplot(genus_no_ls_nested_cv_2month_bins_long %>% filter(age <= 500), 
+       aes(x = age, y = pred, group = interval)) +
+  geom_point(size = 0.3) +
+  geom_smooth(method = "lm") +
+  geom_smooth(method = "lm", group = NULL) +
+  coord_equal() +
+  facet_wrap(~lifestyle)+
+  theme_classic()
+
+
+lifestyle_predictions_family <- lifestyle_predictions_family %>%
+  mutate(model_name = "rf1") %>%
+  mutate(training_set = ifelse(lifestyle == "industrialized", yes = "non_industrialized", no = "industrialized"))
+lifestyle_lm_list_family <- get_lm_list(pred_df = lifestyle_predictions_family, grouping = c("study", "lifestyle", "model_name")) %>%
+  mutate(training_set = ifelse(lifestyle == "industrialized", yes = "non_industrialized", no = "industrialized")) %>%
+  rbind(., industrialized_lm_list_family, nonindustrialized_lm_list_family, all_lm_list_family)
+
+lifestyle_lm_list_family <- lifestyle_lm_list_family %>%
+  mutate(training_set = factor(training_set, levels = c("non_industrialized", "combined", "industrialized")),
+         lifestyle = factor(lifestyle, levels = c("industrialized", "non_industrialized")))
+
+# stat test (stay with R2, RSME performs worse)
+df_p_val_lifestyle_family <- lifestyle_lm_list_family %>%
+  # lifestyle_lm_list_genus %>%
+  filter(study != "bender_2016") %>%
+  arrange(study) %>%
+  mutate(training_set = factor(training_set)) %>%
+  rstatix::group_by(lifestyle) %>%
+  rstatix::wilcox_test(R2 ~ training_set, paired = T) %>%
+  rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
+  rstatix::add_significance(p.col = "p.adj", cutpoints = c(0, 1e-03, 0.01, 0.05, 0.1, 1)) %>% 
+  rstatix::add_xy_position(x = "lifestyle", dodge = 0.8) 
+
+ls_performance_family <- ggplot(lifestyle_lm_list_family, aes(x=lifestyle, y = R2)) +
+  geom_boxplot(aes(fill = training_set)) +
+  # ylim(0, 1) +
+  xlab("Test set") +
+  add_pvalue(df_p_val_lifestyle_family,
+             label = "{p.adj.signif}",
+             # step.group.by = "variation",
+             step.increase = 0.05,
+             tip.length = 0.01,
+             # bracket.nudge.y = 0.02,
+             xmin = "xmin", 
+             xmax = "xmax",
+             show.legend = FALSE) +
+  ylim(0,NA) +
+  theme(
+    axis.title.x = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.title.y = element_text(size = 16),
+    axis.text.y = element_text(size = 14),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    legend.text = element_text(size = 15),
+    legend.title = element_text(size = 15))
+
 
 # tipping point? ###############################
 sliding_window_size <- 50

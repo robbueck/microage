@@ -197,10 +197,23 @@ all_preds_combined <- bind_rows(preds_all, preds_industrialized, preds_noindustr
   mutate(age_cat = cut(age, breaks = 0:112 * 7) %>% as.character()) %>%
   dplyr::group_by(age_cat, training_set) %>%
   dplyr::mutate(group_median = mean(predicted_age),
-         group_sd = sd(predicted_age)) %>%
+         group_sd = sd(predicted_age),
+         n_healthy = sum(healthy),
+         n_sick = sum(!healthy),
+         ratio_h_s = log(n_healthy / n_sick, base = 2)) %>%
   ungroup() %>%
   mutate(MAZ = (predicted_age - group_median) / group_sd) %>%
   filter(age <= 600, age > 190, health != "MAM") # malnurished children are older
+
+
+all_preds_combined <- all_preds_combined %>%
+  filter(health == "healthy") %>%
+  group_by(age_cat, training_set) %>% 
+  slice_sample(n = 50) %>%
+  summarize(group_median_downsampled = mean(predicted_age),
+            group_sd_downsampled = sd(predicted_age)) %>%
+  left_join(all_preds_combined, ., by = c("age_cat", "training_set")) %>%
+  mutate(MAZ_downsampled = (predicted_age - group_median_downsampled) / group_sd_downsampled)
 
 
 ## plots #################
@@ -336,7 +349,17 @@ ps_health_mal_genus_clr <- ps_health_mal_genus %>%
   microbiome::transform(transform = "clr")
 
 health_mal_count_matrix_clr <- ps_health_mal_genus_clr %>% otu_table %>% as.data.frame %>% as.matrix %>% t()
+ps_low_counts_health_mal <- ps_health_mal_genus %>% prune_samples(samples = (sample_sums(.) < 2000))
+ps_object_health_mal_genus_raref <- ps_health_mal_genus %>% rarefy_even_depth(., sample.size = 2000) %>%
+  merge_phyloseq(.,ps_low_counts_health_mal)
+
+
 if(pcoa_mal_step) {
+  alpha.div_gen_health_mal <- microbiome::alpha(ps_object_health_mal_genus_raref, index = c("Observed", "Shannon")) %>%
+    rownames_to_column() %>%
+    left_join(., mdat_malnurished_all, by = c("rowname" = "run_accession")) %>%
+    mutate(lifestyle_health = paste(lifestyle, health, sep = "_"))
+
   pcoa_aitch_genus_mal <- prcomp(health_mal_count_matrix_clr)
   dist.aitch.genus_mal <- vegdist(health_mal_count_matrix_clr, method = "euclidean")
   fit_adonis_genus_aitch_mal <- adonis2(dist.aitch.genus_mal ~ age + lifestyle + health + study, # + subject_ID,
@@ -344,7 +367,7 @@ if(pcoa_mal_step) {
                                         by="terms", na.action = na.omit,
                                             parallel = 10)
   
-  save(pcoa_aitch_genus_mal, mdat_malnurished_all, fit_adonis_genus_aitch_mal,
+  save(pcoa_aitch_genus_mal, mdat_malnurished_all, fit_adonis_genus_aitch_mal, alpha.div_gen_health_mal,
        file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/malnurished_pcoa.RData")
 } else {
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/malnurished_pcoa.RData")
@@ -365,78 +388,69 @@ mdat_malnurished_pca %>%
   guides(color = guide_legend(override.aes = list(size = 3, alpha = 1)))
 ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/malnurished_pca.pdf")
 ## GAMs ###########################
-# plan(multisession, workers = 5)  # You can change 'workers' to any number of cores you want to use
+plan(multisession, workers = 5)  # You can change 'workers' to any number of cores you want to use
 
-# run_gamlss_tests <- function(data, var_name, filter_criteria, trace = F) {
-#   cat("Fitting models for conditions: ", var_name, " and ", filter_criteria, "\n")
-#   # formula_full <- as.formula(paste("predicted_age ~ pbm(age) *", var_name, "+ random(study)"))
-#   # formula_traj <- as.formula(paste("predicted_age ~ pbm(age) +", var_name, "+ random(study)"))
-#   # formula_intercept <- as.formula(paste("predicted_age ~ pbm(age) + pbm(age):", var_name, "+ random(study)"))
-#   formula_full <- as.formula(paste("predicted_age ~ s(age, by = ", var_name, ") +", var_name, "+ s(study, bs = 're')"))
-#   formula_traj <- as.formula(paste("predicted_age ~ s(age) +", var_name, "+ s(study, bs = 're')"))
-#   formula_intercept <- as.formula(paste("predicted_age ~ s(age, by = ", var_name, ") + s(study, bs = 're')"))
-#   filtered_data <- data %>%
-#     filter(!!rlang::parse_expr(filter_criteria)) %>%
-#     select(predicted_age, age, !!sym(var_name), study)
-#   # print("model formulars are:")
-#   # print(formula_full)
-#   # print(formula_traj)
-#   # print(formula_intercept)
-#   # Fit the models
-#   full_model <- gam(formula_full,
-#                        data = filtered_data)
-#   traj_model <- gam(formula_traj,
-#                        data = filtered_data)
-#   intercept_model <- gam(formula_intercept,
-#                             data = filtered_data)
-#   
-#   # full_model <- gamlss(formula_full,
-#   #                      data = filtered_data,
-#   #                      trace = trace)
-#   # traj_model <- gamlss(formula_traj,
-#   #                      data = filtered_data, 
-#   #                      trace = trace)
-#   # intercept_model <- gamlss(formula_intercept,
-#   #                           data = filtered_data, 
-#   #                           race = trace)
-#   # traj_LR_test <- LR.test(traj_model, full_model, print = F)
-#   # intercept_LR_test <- LR.test(intercept_model, full_model, print = F)
-#   # list(full_m = full_model, traj_m = traj_model, int_m = intercept_model)
-#   data.frame(test = var_name,
-#              subset = filter_criteria,
-#              # p_intercept = intercept_LR_test$p.val,
-#              # p_traj = traj_LR_test$p.val,
-#              # intercept = full_model$mu.coefficients[[3]],
-#              # shape_param = full_model$mu.coefficients[[5]],
-#              aic_full = full_model$aic,
-#              aic_traj = traj_model$aic,
-#              aic_intercept = intercept_model$aic)
-#   }
-# 
-# # test <- run_gamlss_tests(all_preds_combined, var_name = "healthy", filter_criteria = "training_set == 'combined'")
-# testing_conditions <- data.frame(filter_conditions = c("training_set == 'combined' & health == 'healthy'", "training_set == 'combined'", "training_set == 'combined' & lifestyle == 'non_industrialized'",
-#                                                        "training_set == 'non_industrialized' & health == 'healthy'", "training_set == 'non_industrialized'", "training_set == 'non_industrialized' & lifestyle == 'non_industrialized'",
-#                                                        "training_set == 'industrialized' & health == 'healthy'", "training_set == 'industrialized'", "training_set == 'industrialized' & lifestyle == 'non_industrialized'"),
-#                        test_conditions = c("lifestyle_industrialized", "healthy", "healthy",
-#                                            "lifestyle_industrialized", "healthy", "healthy",
-#                                            "lifestyle_industrialized", "healthy", "healthy"))
-# 
-# results_df <- pmap_dfr(
-#   list(testing_conditions$filter_conditions, testing_conditions$test_conditions),
-#   ~ run_gamlss_tests(all_preds_combined, ..2, ..1))
-# 
-# test_modes <- run_gamlss_tests(all_preds_combined, testing_conditions$test_conditions[6], 
-#                                testing_conditions$filter_conditions[6])
-# 
-# filtered_data <- all_preds_combined %>%
-#   filter(training_set == 'industrialized' & lifestyle == 'non_industrialized') %>%
-#   select(predicted_age, age, healthy, study)
-# # Fit the models
-# test_fit <- gamlss(predicted_age ~ pbm(age) * healthy + random(study),
-#                      data = filtered_data)
-# test_fit_traj <- gamlss(predicted_age ~ pb(age) + healthy + random(study),
-#                    data = filtered_data)
-# 
+run_gamlss_tests <- function(data, var_name, filter_criteria, trace = F, outcome = "predicted_age") {
+  cat("Fitting models for conditions: ", var_name, " and ", filter_criteria, "\n")
+  formula_full <- as.formula(paste(outcome, "~ pb(age) +", var_name, "+ random(study)"))
+  formula_intercept <- as.formula(paste(outcome, "~ pb(age) + random(study)"))
+  filtered_data <- data %>%
+    filter(!!rlang::parse_expr(filter_criteria)) %>%
+    select(outcome, age, !!sym(var_name), study)
+  # print("model formulars are:")
+  # print(formula_full)
+  # print(formula_traj)
+  # print(formula_intercept)
+  # Fit the models
+  full_model <- gamlss(formula_full,
+                       data = filtered_data)
+  intercept_model <- gamlss(formula_intercept,
+                            data = filtered_data)
+
+  intercept_LR_test <- tryCatch(
+    LR.test(intercept_model, full_model, print = F),
+    error = function(e){
+      print(e)
+      list(p.val = NA, df = NA)
+    })
+  
+  # list(full_m = full_model, traj_m = traj_model, int_m = intercept_model)
+  data.frame(test = var_name,
+             subset = filter_criteria,
+             p_intercept = intercept_LR_test$p.val,
+             df_gam_ls = intercept_LR_test$df,
+             exp_var_intercept = 1 - deviance(full_model) / deviance(intercept_model),
+             # p_traj = traj_LR_test$p.val,
+             intercept = full_model$mu.coefficients[[3]],
+             # shape_param = full_model$mu.coefficients[[5]],
+             aic_full = full_model$aic,
+             aic_intercept = intercept_model$aic)
+}
+
+# test <- run_gamlss_tests(all_preds_combined, var_name = "healthy", filter_criteria = "training_set == 'combined'")
+testing_conditions <- data.frame(filter_conditions = c("training_set == 'combined' & health == 'healthy'", "training_set == 'combined'", "training_set == 'combined' & lifestyle == 'non_industrialized'",
+                                                       "training_set == 'non_industrialized' & health == 'healthy'", "training_set == 'non_industrialized'", "training_set == 'non_industrialized' & lifestyle == 'non_industrialized'",
+                                                       "training_set == 'industrialized' & health == 'healthy'", "training_set == 'industrialized'", "training_set == 'industrialized' & lifestyle == 'non_industrialized'"),
+                       test_conditions = c("lifestyle_industrialized", "healthy", "healthy",
+                                           "lifestyle_industrialized", "healthy", "healthy",
+                                           "lifestyle_industrialized", "healthy", "healthy"))
+
+results_df <- pmap_dfr(
+  list(testing_conditions$filter_conditions, testing_conditions$test_conditions),
+  ~ run_gamlss_tests(all_preds_combined, ..2, ..1, outcome = "predicted_age"))
+
+testing_conditions_a_div <- data.frame(filter_conditions = c("health == 'healthy'", "lifestyle == 'non_industrialized'",
+                                                             "lifestyle == 'industrialized'"),
+                                 test_conditions = c("lifestyle_industrialized", "healthy", "healthy"))
+
+alpha.div_gen_health_mal$lifestyle_industrialized <- alpha.div_gen_health_mal$lifestyle == "industrialized"
+alpha.div_gen_health_mal$healthy <- alpha.div_gen_health_mal$health == "healthy"
+alpha.div_gen_health_mal$study <- factor(alpha.div_gen_health_mal$study)
+results_a_div <- pmap_dfr(
+  list(testing_conditions_a_div$filter_conditions, testing_conditions_a_div$test_conditions),
+  ~ run_gamlss_tests(alpha.div_gen_health_mal, ..2, ..1, outcome = "diversity_shannon"))
+
+
 
 
 ## SHAP ###########################
@@ -762,10 +776,22 @@ all_preds_combined_preterm <- bind_rows(preds_comb_preterm, preds_industrialized
   mutate(age_cat = cut(age, breaks = 0:15 * 7)) %>%
   group_by(age_cat, training_set) %>%
   dplyr::mutate(group_median = mean(predicted_age),
-         group_sd = sd(predicted_age)) %>%
+         group_sd = sd(predicted_age),
+         n_healthy = sum(healthy),
+         n_sick = sum(!healthy),
+         ratio_h_s = log(n_healthy / n_sick, base = 2)) %>%
   ungroup() %>%
   mutate(MAZ = (predicted_age - group_median) / group_sd)
-
+         
+all_preds_combined_preterm <- all_preds_combined_preterm %>%
+  filter(health == "healthy") %>%
+  group_by(age_cat, training_set) %>% 
+  slice_sample(n = 50) %>%
+  summarize(group_median_downsampled = mean(predicted_age),
+            group_sd_downsampled = sd(predicted_age)) %>%
+  left_join(all_preds_combined_preterm, ., by = c("age_cat", "training_set")) %>%
+  mutate(MAZ_downsampled = (predicted_age - group_median_downsampled) / group_sd_downsampled)
+  
 
 ## plots ############
 
@@ -834,14 +860,24 @@ ps_health_preterm_genus_clr <- ps_health_preterm_genus %>%
   microbiome::transform(transform = "clr")
 
 health_preterm_count_matrix_clr <- ps_health_preterm_genus_clr %>% otu_table %>% as.data.frame %>% as.matrix %>% t()
+
+ps_low_counts_health_preterm <- ps_health_preterm_genus %>% prune_samples(samples = (sample_sums(.) < 2000))
+ps_object_health_preterm_genus_raref <- ps_health_preterm_genus %>% rarefy_even_depth(., sample.size = 2000) %>%
+  merge_phyloseq(.,ps_low_counts_health_preterm)
+
 if(pcoa_preterms_step) {
+  alpha.div_gen_health_preterm <- microbiome::alpha(ps_object_health_preterm_genus_raref, index = c("Observed", "Shannon")) %>%
+    rownames_to_column() %>%
+    left_join(., mdat_preterm_all, by = c("rowname" = "run_accession")) %>%
+    mutate(lifestyle_health = paste(lifestyle, health, sep = "_"))
+  
   pcoa_aitch_genus_preterm <- prcomp(health_preterm_count_matrix_clr)
   dist.aitch.genus_preterm <- vegdist(health_preterm_count_matrix_clr, method = "euclidean")
   fit_adonis_genus_aitch_preterm <- adonis2(dist.aitch.genus_preterm ~ age + lifestyle + health + study, # + subject_ID,
                                         data = mdat_preterm_all[names(dist.aitch.genus_preterm),], by="terms", na.action = na.omit,
                                         parallel = 10)
   
-  save(pcoa_aitch_genus_preterm, mdat_preterm_all, fit_adonis_genus_aitch_preterm,
+  save(pcoa_aitch_genus_preterm, mdat_preterm_all, fit_adonis_genus_aitch_preterm, alpha.div_gen_health_preterm,
        file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/preterm_pcoa.RData")
 } else {
   load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/preterm_pcoa.RData")
@@ -864,6 +900,17 @@ mdat_preterm_pca %>%
   guides(color = guide_legend(override.aes = list(size = 3, alpha = 1)))
 ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/figs/preterm_pca.pdf")
 
+## GAMs ##########################################
+results_df_preterm <- pmap_dfr(
+  list(testing_conditions$filter_conditions, testing_conditions$test_conditions),
+  ~ run_gamlss_tests(all_preds_combined_preterm, ..2, ..1, outcome = "predicted_age"))
+
+alpha.div_gen_health_preterm$lifestyle_industrialized <- alpha.div_gen_health_preterm$lifestyle == "industrialized"
+alpha.div_gen_health_preterm$healthy <- alpha.div_gen_health_preterm$health == "healthy"
+alpha.div_gen_health_preterm$study <- factor(alpha.div_gen_health_preterm$study)
+results_a_div_preterm <- pmap_dfr(
+  list(testing_conditions_a_div$filter_conditions, testing_conditions_a_div$test_conditions),
+  ~ run_gamlss_tests(alpha.div_gen_health_preterm, ..2, ..1, outcome = "diversity_shannon"))
 
 ## SHAP-analysis ####################
 if(shap_preterms) {
