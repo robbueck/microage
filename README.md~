@@ -11,4 +11,4 @@ filtered_cdf <- create_caret_df(ps_filtered, transformation = "compositional", o
                 additional_cols = c("Observed", "Shannon"))
 
 # predict microbiome age
-predicted_age = predict(final_model_genus$rf1, newdata = prosper_filtered_cdf$features)
+predicted_age = predict(final_model_genus, newdata = filtered_cdf$features)

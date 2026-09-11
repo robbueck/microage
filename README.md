@@ -12,3 +12,8 @@ filtered_cdf <- create_caret_df(ps_filtered, transformation = "compositional", o
 
 # predict microbiome age
 predicted_age = predict(final_model_genus, newdata = filtered_cdf$features)
+```
+
+# to dos:
+clean up scripts
+add documentation for SHAP-value calculation on novel data
