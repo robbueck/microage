@@ -18,8 +18,6 @@ library(ggExtra)
 library(wesanderson)
 library(ggdist)
 
-
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/functions.R")
 setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures")
 # define global colors for lifestyle:
 fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", Combined = "#BC85A9")

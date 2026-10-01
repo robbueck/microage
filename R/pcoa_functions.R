@@ -1,3 +1,34 @@
+# fix merge_taxa2 naming
+merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
+{
+  if (is.null(taxa) && is.null(pattern)) {
+    return(x)
+  }
+  if (!is.null(pattern)) {
+    if (!is.null(taxa)) {
+      mytaxa <- taxa
+    }
+    else {
+      mytaxa <- taxa(x)
+    }
+    if (length(grep(pattern, mytaxa)) == 0) {
+      return(x)
+    }
+    mytaxa <- mytaxa[grep(pattern, mytaxa)]
+  }
+  else if (is.null(taxa)) {
+    mytaxa <- taxa(x)
+  }
+  else {
+    mytaxa <- taxa
+  }
+  x2 <- phyloseq::merge_taxa(x, mytaxa, 1)
+  mytaxa <- gsub("\\)", "\\\\)", gsub("\\(", "\\\\(", mytaxa))
+  taxa_names(x2) <- gsub(mytaxa[[1]], name, taxa_names(x2))
+  tax_table(x2)[1, ] <- rep(name, ncol(tax_table(x2)))
+  x2
+}
+
 
 # downsample the larger lifestyle to the size of the smaller lifestyle
 # optional, attempt to have equal study sizes
@@ -49,6 +80,83 @@ get_dist_df <- function(dist_obj, mdata){
 }
 
 
+# plot a PCoA ordination for repeated_subsampling
+plot_pcoa <- function(ps_object, ordination,
+                      color = NULL,
+                      shape = NULL,
+                      ellipses = F,
+                      label = NULL,
+                      title = NULL,
+                      alpha = 1,
+                      size = 1,
+                      axes = 1:2,
+                      plot_dens = F){
+  DF <- plot_ordination(ps_object, ordination, justDF = T, axes = axes)
+  if (!is.null(color)) {
+    if (!color %in% names(DF)) {
+      warning("Color variable was not found in the available data you provided.", 
+              "No color mapped.")
+      color <- NULL
+    }
+  }
+  if (!is.null(shape)) {
+    if (!shape %in% names(DF)) {
+      warning("Shape variable was not found in the available data you provided.", 
+              "No shape mapped.")
+      shape <- NULL
+    }
+  }
+  if (!is.null(label)) {
+    if (!label %in% names(DF)) {
+      warning("Label variable was not found in the available data you provided.", 
+              "No label mapped.")
+      label <- NULL
+    }
+  }
+  x = colnames(DF)[1]
+  y = colnames(DF)[2]
+  if (ncol(DF) <= 2) {
+    message("No available covariate data to map on the points for this plot `type`")
+    ord_map = aes_string(x = x, y = y)
+  } else {ord_map = aes_string(x = x, y = y, color = color, shape = shape, 
+                               na.rm = TRUE)
+  }
+  p <- ggplot(DF, ord_map) + geom_point(na.rm = TRUE, alpha = alpha, size = size)
+  if (!is.null(label)) {
+    label_map <- aes_string(x = x, y = y, label = label)
+    p = p + geom_text(label_map, data = rm.na.phyloseq(DF, 
+                                                       label), size = 2, vjust = 1.5, na.rm = TRUE)
+  }
+  if (!is.null(title)) {
+    p = p + ggtitle(title)
+  }
+  if (length(ordination$values$Eigenvalues[axes]) > 0) {
+    eigvec = ordination$values$Eigenvalues
+    fracvar = eigvec[axes]/sum(eigvec)
+    percvar = round(100 * fracvar, 1)
+    strivar = as(c(p$label$x, p$label$y), "character")
+    strivar = paste0(strivar, "   [", percvar, "%]")
+    p = p + xlab(strivar[1]) + ylab(strivar[2])
+  }
+  if (ellipses) {
+    p <- p + stat_ellipse(ord_map)
+  }
+  if (plot_dens) {
+    xdens <- cowplot::axis_canvas(p, axis = "x")+
+      geom_density(data = DF, aes(x = Axis.1, fill = !!sym(color)),
+                   alpha = 0.7, size = 0.2)
+    
+    ydens <- cowplot::axis_canvas(p, axis = "y", coord_flip = TRUE)+
+      geom_density(data = DF, aes(x = Axis.2, fill = !!sym(color)),
+                   alpha = 0.7, size = 0.2)+
+      coord_flip()
+    
+    p <- insert_xaxis_grob(p, xdens, grid::unit(.2, "null"), position = "top")
+    p <- insert_yaxis_grob(p, ydens, grid::unit(.2, "null"), position = "right")
+    p <- ggdraw(p)
+  }
+  return(p)
+}
 
 
 # perform the repeated subsampling, either plots pcoas or

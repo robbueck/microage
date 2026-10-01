@@ -18,7 +18,6 @@ library(stats)
 
 source("/fast/AG_Forslund/rob/PROSPER/R_scripts/age_model_fuctions.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/regression_functions.R")
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/functions.R")
 
 pfun <- function(object, newdata) {
   require(ranger)

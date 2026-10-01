@@ -9,6 +9,38 @@ library(ggplot2)
 library(gbm)
 library(lme4)
 
+# fix merge_taxa2 naming
+merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
+{
+  if (is.null(taxa) && is.null(pattern)) {
+    return(x)
+  }
+  if (!is.null(pattern)) {
+    if (!is.null(taxa)) {
+      mytaxa <- taxa
+    }
+    else {
+      mytaxa <- taxa(x)
+    }
+    if (length(grep(pattern, mytaxa)) == 0) {
+      return(x)
+    }
+    mytaxa <- mytaxa[grep(pattern, mytaxa)]
+  }
+  else if (is.null(taxa)) {
+    mytaxa <- taxa(x)
+  }
+  else {
+    mytaxa <- taxa
+  }
+  x2 <- phyloseq::merge_taxa(x, mytaxa, 1)
+  mytaxa <- gsub("\\)", "\\\\)", gsub("\\(", "\\\\(", mytaxa))
+  taxa_names(x2) <- gsub(mytaxa[[1]], name, taxa_names(x2))
+  tax_table(x2)[1, ] <- rep(name, ncol(tax_table(x2)))
+  x2
+}
+
+
 
 # function to run the regression methods
 # k: The number of partitions of the data set. If left as NULL (the default),

@@ -28,7 +28,6 @@ library(furrr)
 
 
 
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/functions.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/pcoa_functions.R")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/setlists.R")
 options(future.globals.maxSize = 25000 * 1024^2)
