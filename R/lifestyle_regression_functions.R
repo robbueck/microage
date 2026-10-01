@@ -137,3 +137,89 @@ get_predictions_lifestyle <- function(test_set, ps){
     mutate(pred = predict(rf_model, newdata = for_caret_list_test$features))
   return(predictions)
 }
+
+
+# run model in bins
+run_in_bins <- function(ps_obj, cutoffs, prefix) {
+  print(cutoffs)
+  oldDF <- as(sample_data(ps_obj), "data.frame") 
+  bin_DF <- subset(oldDF, age >= cutoffs[[1]] & age < cutoffs[2])
+  ps_obj_bin <- ps_obj
+  sample_data(ps_obj_bin) <- sample_data(bin_DF)
+  stds_all <- unique(ps_obj_bin@sam_data$study)
+  res <- c("industrialized", "non_industrialized") %>% 
+    future_map_dfr(~ get_predictions_lifestyle(. ,ps = ps_obj))
+  res$interval <- cutoffs[1]
+  res$n_studies <- length(stds_all)
+  return(res)
+}
+
+
+# read feature importances
+get_feature_importance <- function(study, lst = "nonindustrialized") {
+  train_object <- readRDS(paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+                                 "genus_data_", lst, "_", study, ".rds"))
+  boruta_object <- readRDS(paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+                                  "genus_data_", lst, "_", study, "_boruta_res.rds"))
+  imp_ftrs <- boruta_object$finalDecision %>% grep("Confirmed", value = T,.) %>% names
+  # get, filter and normalize importances
+  var_imp <- train_object$rf1$finalModel$variable.importance %>%
+    { .[names(.) %in% imp_ftrs] } %>%
+    { (. / max(.)) * 100 }
+  data.frame(importance = var_imp,
+             taxon = names(var_imp),
+             ID = study) %>%
+    arrange(-importance)# %>% head(n = 20)
+}
+
+
+# linear model to test for lifestyle effect in modeling shap and abundance:
+ks_test_lifestyle <- function(tx, df) {
+  print(tx)
+  dr_flt <- df %>% filter(taxon == tx) %>%
+    # filter(model == lifestyle) %>%
+    select(shap_value, ab_value, model, study, subject_ID, age) 
+  # # subsample to equal age dist:
+  # print("match it")
+  # m_out <- matchit(model_industrialized ~ age, 
+  #         data = dr_flt,
+  #         method = "cem", k2k = T, m.order = "farthest")
+  # plot(m_out, type = "density", interactive = F,
+  #      which.xs = ~age)
+  # plot(summary(m_out))
+  # # plot(m_out, type = "jitter", interactive = FALSE)
+  # dr_flt_match <- match.data(m_out, data = dr_flt,
+  #            drop.unmatched = T)
+  print("run ks test")
+  ks_test_res <- ks.test(shap_value ~ model, data = dr_flt)
+  # return(ks_test_res)
+  return(list(taxon = tx,
+              # p_intercept = intercept_test$`Pr(>Chisq)`[2],
+              # p_slope = slope_test$`Pr(>Chisq)`[2],
+              ls_ratio = table(dr_flt$model)[1] / table(dr_flt$model)[2],
+              n_samples = nrow(dr_flt),
+              p_ks = ks_test_res$p.value,
+              D_ks = ks_test_res$statistic))
+}
+
+# run ks test between taxa within one model:
+ks_test_per_model <- function(data, taxa) {
+  print(taxa)
+  data_grouped <- data %>% filter(taxon %in% taxa)
+  ks_test_res <- ks.test(shap_value ~ taxon, data = data_grouped)
+  # return(ks_test_res)
+  return(list(taxon1 = taxa[1],
+              taxon2 = taxa[2],
+              n_samples = nrow(data_grouped),
+              p_ks = ks_test_res$p.value,
+              D_ks = ks_test_res$statistic))
+  return(ks_results)
+}
+
+
+# check empirical p-values:
+get_p_value <- function(obs_value, null_dist) {
+  # Calculate the proportion of null values greater than or equal to the observed value
+  p_value <- mean(abs(null_dist) >= abs(obs_value))
+  return(p_value)
+}
