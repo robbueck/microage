@@ -29,11 +29,11 @@ cowplot::set_null_device("agg")
 source("/fast/AG_Forslund/rob/mm_index/R_scripts/functions.R")
 setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement")
 # define global colors for lifestyle:
-# fixed_colors <- setNames(viridisLite::turbo(3), c("Industrialized", "non-Industrialized", "Combined")) 
 fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", Combined = "#BC85A9")
 
 # Figure S1 #####################################################################
 # rarefaction curves
+# comment out to prevent extensive usage of memory and time
 # load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/rarefaction_curves.RData")
 # raredat <- raredat %>%
 #   mutate(study = paste0(gsub("^(.)", "\\U\\1",
@@ -150,8 +150,6 @@ circle_data <- data.frame(
     annotate("text",
              x = circle_data$x0[2] * 1.3, y = 1.2,
              label = circle_data$labels[2], size = 4.5) +
-    
-    # ggtitle("A)") +
     theme_void() +
     theme(plot.title = element_text(size = 18),
           legend.position = "none"))
@@ -203,8 +201,6 @@ circle_data_raref <- data.frame(
     annotate("text",
              x = circle_data_raref$x0[2] * 1.2, y = 1.2,
              label = circle_data_raref$labels[2], size = 5) +
-    
-    # ggtitle("A)") +
     theme_void() +
     theme(plot.title = element_text(size = 18),
           legend.position = "none"))
@@ -315,16 +311,11 @@ theme_raefy <- function() {
     ylim(0, NA) +
     scale_color_manual(values = fixed_colors,
                        guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    # stat_cor(method = "spearman",
-    #          cor.coef.name = "spearman",
-    #          size = 4,
-    #          show.legend = F) +
     theme_raefy())
 
 (subjects_rarefactin <- bind_rows(n_taxa_industrialized_subjects_rarefy, n_taxa_non_industrialized_subjects_rarefy) %>% 
     mutate(Lifestyle = ifelse(Lifestyle == "Non-industrialized", yes = "non-Industrialized", no = Lifestyle)) %>% #pull(Lifestyle) %>% table()
     ggplot(.,aes(x = n_subjects, y = n_taxa, color = Lifestyle)) +
-    # geom_point() +
     geom_smooth() +
     ylab("Total genera count") +
     xlab("Number of subjects") +
@@ -336,7 +327,6 @@ theme_raefy <- function() {
 (samples_rarefaction <- bind_rows(n_taxa_industrialized_samples_rarefy, n_taxa_non_industrialized_samples_rarefy) %>% 
     mutate(Lifestyle = ifelse(Lifestyle == "Non-industrialized", yes = "non-Industrialized", no = Lifestyle)) %>% #pull(Lifestyle) %>% table()
     ggplot(.,aes(x = n_samples, y = n_taxa, color = Lifestyle)) +
-    # geom_point() +
     geom_smooth() +
     ylab("Total genera count") +
     xlab("Number of samples") +
@@ -356,7 +346,6 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/suppl
                                                                no = "non-Industrialized")),
                          aes(y = observed, x = age, color = Lifestyle, fill = Lifestyle)) +
     geom_point(alpha = 0.2, size = 0.3) +
-    # geom_smooth(aes(fill = Lifestyle), method = "loess", size = 2, color = "black") +
     geom_smooth(method = "loess", size = 1) +
     scale_color_manual(values = fixed_colors, 
                        guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
@@ -364,7 +353,6 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/suppl
     labs(title = NULL,
          x = "Age [days]",
          y = "Richness (genus)") +
-    # guides(color = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) + 
     theme(axis.title.x = element_text(size = 16),
           axis.text.x = element_text(size = 14),
           axis.title.y = element_text(size = 16),
@@ -386,14 +374,12 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/a_div_
                                                                         no = "non-Industrialized")),
                                   aes(y = n_unassigned_asvs_sample_raref/richness_asv, x = age, color = Lifestyle, fill = Lifestyle)) +
    geom_point(alpha = 0.2, size = 0.3) +
-   # geom_smooth(aes(fill = Lifestyle), method = "loess", size = 2, color = "black") +
    geom_smooth(method = "loess", size = 1) +
    scale_color_manual(values = fixed_colors) +
    scale_fill_manual(values = fixed_colors) +
    labs(title = NULL,
         x = "Age [days]",
         y = "unassigned ASVs [%]") +
-   # guides(color = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) + 
    theme(axis.title.x = element_text(size = 16),
          axis.text.x = element_text(size = 14),
          axis.title.y = element_text(size = 16),
@@ -422,8 +408,6 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/a_div_
                                       filter(lifestyle == "non_industrialized"),
                                     aes(y = diversity_shannon, x = age, 
                                         color = Study, linetype = Country)) +
-   # geom_point(alpha = 0.2, size = 0.3) +
-   # geom_smooth(aes(fill = Lifestyle), method = "loess", size = 2, color = "black") +
    geom_smooth(method = "loess", size = 1, se = F) +
    scale_color_manual(values = wes_palette("Moonrise2"), 
                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
@@ -431,7 +415,6 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/a_div_
    labs(title = NULL,
         x = "Age [days]",
         y = "Shannon diversity (genus)") +
-   # guides(color = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) + 
    theme(axis.title.x = element_text(size = 16),
          axis.text.x = element_text(size = 14),
          axis.title.y = element_text(size = 16),
@@ -648,10 +631,6 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/all_pc
 ## D: Beta div rarefied age ######################
 (pcoa_age_rare <- ggplot(plot_pcoa_data_rare, aes(x = PC1, y = PC2, color = age)) +
     geom_point(alpha = 0.8, size = 0.3) +
-    # scale_color_viridis_c(option = "C", guide = guide_colorbar(direction = "vertical",
-    #                                                            display = "gradient",
-    #                                                            title.position = "top",
-    #                                                            barwidth = 1.5)) +
     scale_color_gradientn(guide = guide_colorbar(direction = "vertical",
                                                  display = "gradient",
                                                  title.position = "top",
@@ -751,10 +730,6 @@ load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/genus_nested_cv_no_
     scale_fill_manual(values = fixed_colors, name = "Lifestyle") +
     scale_color_manual(values = fixed_colors, name = "Lifestyle") +
     scale_x_continuous(breaks = c(0, 300, 600)) +
-    # geom_line(data = plot_data, aes(y = fitted, x = age), size = 1, show.legend = F) +
-    # scale_color_manual(values = fixed_colors, 
-    #                    guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    # scale_fill_manual(values = fixed_colors) +
     coord_equal() +
     labs(title = NULL,
          x = "Chronological age [days]",
@@ -904,12 +879,8 @@ library(ggbeeswarm)
                      shape = 21, width = 0.1, size = 1.5, show.legend = T) +
     geom_quasirandom(aes(fill = Training_set), dodge.width = 0.8,
                      shape = 21, width = 0.1, size = 1.5) +
-    # geom_jitter(aes(fill = Training_set), shape = 21, position=position_jitterdodge(), show.legend = F) +
     scale_color_manual(values = fixed_colors,
                        guide = guide_legend(#title.hjust = 0.5,
-                         # title.position = "top",
-                         # direction = "horizontal",
-                         # position = "bottom",
                          override.aes = list(shape = 15, size = 5, alpha = 1))) +
     scale_fill_manual(values = fixed_colors,
                       guide = "none") +
@@ -925,7 +896,6 @@ library(ggbeeswarm)
                xmin = "xmin",
                xmax = "xmax",
                show.legend = FALSE) +
-    # ylim(0, 1) +
     theme(axis.title.x = element_text(size = 16),
           axis.text.x = element_text(size = 14),
           axis.title.y = element_text(size = 16),
@@ -933,8 +903,6 @@ library(ggbeeswarm)
           panel.grid.major = element_blank(),
           panel.grid.minor = element_blank(),
           panel.background = element_blank(),
-          # legend.position = c(0.7, 0.1),
-          # legend.position="bottom",
           legend.text = element_text(size = 15),
           legend.title = element_text(size = 15)))
 
@@ -969,9 +937,6 @@ df_p_val_lifestyle_family <- lifestyle_lm_list_family %>%
                      shape = 21, width = 0.1, size = 1.5) +
     scale_color_manual(values = fixed_colors,
                        guide = guide_legend(#title.hjust = 0.5,
-                         # title.position = "top",
-                         # direction = "horizontal",
-                         # position = "bottom",
                          override.aes = list(shape = 15, size = 5, alpha = 1))) +
     scale_fill_manual(values = fixed_colors,
                       guide = "none") +
@@ -1351,15 +1316,6 @@ violin_plot_df <- shap_vals_combined %>%
     scale_y_continuous(breaks = seq_along(levels(violin_plot_df$display_taxon)),
                        labels = levels(violin_plot_df$display_taxon),
                        expand = c(0.001, 0.001)) +
-    # scale_color_viridis_c(
-    #   option = "H", 
-    #   name = "Feature value",
-    #   breaks = range(violin_plot_df$abundance, na.rm = TRUE),
-    #   labels = c("Low", "High"),
-    #   guide = guide_colorbar(direction = "horizontal",
-    #                          display = "gradient",
-    #                          title.position = "top",
-    #                          barwidth = 10)) +
     scale_color_gradientn(name = "Feature value",
                           breaks = range(violin_plot_df$abundance, na.rm = TRUE),
                           labels = c("Low", "High"),
@@ -1514,7 +1470,6 @@ ls_importance <- imp_prev_ls %>%
                             comparison == "between_taxa" & model == "non_industrialized" ~ "Between taxa, non-Industrialized")) %>%
    group_by(Group) %>% #summarize(mean_D = mean(D_ks)) 
    ggplot(., aes(x = D_ks, color = Group, fill = Group)) +
-   # geom_density(alpha = 0.5) +
    ggdist::stat_slabinterval(.width = 0, alpha = 0, shape = 21) +
    ggdist::stat_slabinterval(.width = 0, slab_alpha = .5, shape = 15, show.legend = F, size = 15) +
    scale_color_manual(values = c("Between models, within taxa" = "#DB3A07FF",
@@ -1614,6 +1569,7 @@ abundance_data_rarefied <- ps_object_genus_raref_comp %>%
 
 
 ## B: Abundance over time ######################
+# commented to prevent extensive usage of time and memory
 # abundance_data <- ps_object_genus_comp %>% 
 #   psmelt() %>%
 #   select(lifestyle, Abundance, OTU, age) %>%
@@ -2026,9 +1982,6 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/suppl
 
 # Fig. 10 ##############################
 load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/sick_age_predictions.RData")
-# fixed_colors_sick <- fixed_colors
-# names(fixed_colors_sick) <- paste0(names(fixed_colors_sick), " healthy")
-# fixed_colors_sick <- c(fixed_colors_sick, `non-Industrialized SAM` = "#25ECA7FF", `Industrialized preterm` = "#4147ADFF")
 ## A: Malnourished only non-industrialized #####################################
 all_preds_combined_only_bangladesh <- all_preds_combined %>% 
   filter(study %in% c("subramanian_2014", "gehrig_2019"))
@@ -2092,7 +2045,6 @@ pvals_maz_mal_only_bangladesh <- all_preds_combined_only_bangladesh %>%
                                     training_set == "non_industrialized" ~ "non-Industrialized",
                                     training_set == "industrialized" ~ "Industrialized")) %>%
     ggplot(., aes(x = training_set, y = MAZ)) +
-    # geom_boxplot(aes(fill = lifestyle_health)) +
    stat_eye(aes(fill = lifestyle_health), position = position_dodge(1), scale = 0.9,
                 .width = c(0, 0.5, 0.95), adjust = 1, shape = 23, point_size = 3,
                 side = "both") +
@@ -2216,16 +2168,13 @@ pvals_maz_preterm_downsampled <- all_preds_combined_preterm %>%
                                     training_set == "non_industrialized" ~ "non-Industrialized",
                                     training_set == "industrialized" ~ "Industrialized")) %>%
     ggplot(., aes(x = training_set, y = MAZ_downsampled)) +
-    # geom_boxplot(aes(fill = lifestyle_health), outliers = F) +
     stat_eye(aes(fill = lifestyle_health), position = position_dodge(1), scale = 0.9,
              .width = c(0, 0.5, 0.95), adjust = 1, shape = 23, point_size = 2,
              side = "both") +
-    # stat_dotsinterval(aes(fill = lifestyle_health), scale = 0.5, position = "dodge", side = "left") +
     scale_y_continuous(breaks = c(0, 4, 8)) +  # Set exact breaks
     scale_fill_manual(values = fixed_colors_sick,
                       name = "Lifestyle and health",
                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    # ylim(NA, 4) +
     add_pvalue(pvals_maz_mal_downsampled,
                label = "{p.adj.signif}",
                step.increase = 0.05 ,
@@ -2467,7 +2416,6 @@ downsampled_genus_df_preterm <- downsampled_genus_df %>%
                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
    scale_fill_manual(values = fixed_colors_sick,
                      name = "Lifestyle and health") +
-   # coord_equal() +
    labs(title = NULL,
         x = "Chronological age [days]",
         y = "Microbial age [days]") +
@@ -2513,16 +2461,12 @@ pvals_maz_preterm <- downsampled_genus_df_preterm %>%
                                     training_set == "non_industrialized" ~ "non-Industrialized",
                                     training_set == "industrialized" ~ "Industrialized")) %>%
     ggplot(., aes(x = training_set, y = MAZ)) +
-    # geom_boxplot(aes(fill = lifestyle_health), outliers = F) +
     stat_eye(aes(fill = lifestyle_health), position = position_dodge(1), scale = 0.9,
              .width = c(0, 0.5, 0.95), adjust = 1, shape = 23, point_size = 2,
              side = "both") +
-    # stat_dotsinterval(aes(fill = lifestyle_health), scale = 0.5, position = "dodge", side = "left") +
-    # scale_y_continuous(breaks = c(0, 2, 4, 6, 8)) +  # Set exact breaks
     scale_fill_manual(values = fixed_colors_sick,
                       name = "Lifestyle and health",
                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    # ylim(NA, 4) +
     add_pvalue(pvals_maz_mal,
                label = "{p.adj.signif}",
                step.increase = 0.05 ,
@@ -2663,148 +2607,3 @@ shap_cors_all %>% mutate(taxon = display_taxon_filter,
                                               .keep = "unused") %>%
               select(taxon, Classification)) %>% 
   write.csv("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/supplementary_tables/supplementary_table_S3.csv")
-
-
-
-# Prevalences ########################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/prevalences.RData")
-short_taxa_names <- short_taxa_names %>%
-  mutate(taxon = taxon %>%
-           gsub("X[.]", "[",.) %>%
-           gsub("[.][.]", "] ",.) %>%
-           gsub("UCG[.]", "UCG-",.) %>%
-           gsub("[.]", " ",.))
-
-(prevalence_plot_suppl <- prev_per_month %>%
-    mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized", no = "non-Industrialized")) %>%
-    left_join(., short_taxa_names, by = c("OTU" = "taxon")) %>% #pull(display_taxon) %>% unique %>% sort
-    filter(display_taxon %in% combined_importance_prev_lifestyles_genus$display_taxon) %>%
-    ggplot(., aes(x = month, y = prev, color = Lifestyle, fill = Lifestyle)) +
-    geom_point(alpha = 0.5) +
-    geom_smooth(method = "loess", alpha = 0) +
-    scale_color_manual(values = fixed_colors, 
-                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1),
-                                            direction = "vertical",
-                                            position = "bottom",
-                                            title.position = "left")) +
-    scale_fill_manual(values = fixed_colors) +
-    facet_wrap(~display_taxon) +
-    xlab("Age [Months]") +
-    ylab("Prevalence")+
-    ggtitle("B)")+
-    theme(axis.text.x = element_text(size = 14),
-          axis.title.x = element_text(size = 16),
-          axis.text.y = element_text(size = 14),
-          axis.title.y = element_text(size = 16),
-          legend.text = element_text(size = 15),
-          legend.title = element_text(size = 15),
-          plot.title = element_text(size=18),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.background = element_blank(),
-          panel.grid.major.y = element_blank(),
-          strip.text = element_text(size = 14, face = "italic"),
-          strip.background = element_blank()))
-
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/prevalences.png", 
-       width = 10, plot = prevalence_plot_suppl)
-
-
-# Figure SX ####################################################################
-load(file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/rarefaction_studies.RData")
-
-rf_rf_df_genus %>%
-  group_by(study, lifestyle) %>%
-  rstatix::cor_test(., vars = c("n_studies", "R2"), method = "spearman")
-
-
-(rarefaction_studies <- ggplot(rf_rf_df_genus %>% mutate(Lifestyle = ifelse(lifestyle == "industrialized",
-                                                                            yes = "Industrialized",
-                                                                            no = "non-Industrialized")),
-                               aes(x = n_studies, y = R2, color = Lifestyle, fill = Lifestyle)) +
-    geom_point(alpha = 0.8, size = 0.5) +
-    # geom_smooth(method = "lm", aes(fill = Lifestyle)) +
-    # stat_cor(method = "spearman",
-    #          cor.coef.name = "spearman",
-    #          # size = 5,
-    #          show.legend = F) +
-    geom_hline(data = plyr::ddply(rf_rf_df_genus, c("study"),
-                                  summarize, final_model = R2[which.max(n_studies)]),
-               aes(yintercept=final_model), size = 0.4, linetype = "dashed") +
-    scale_color_manual(values = fixed_colors, 
-                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    scale_fill_manual(values = fixed_colors) +
-    # scale_color_manual(values = fixed_colors,
-    #                    guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    facet_wrap(~ study) +
-    ylab(bquote("Performance ["~R^2~"]"))+
-    xlab("Number of studies") +
-    ylim(0, 1.1) +
-    theme(axis.title.x = element_text(size = 16),
-          axis.text.x = element_text(size = 14),
-          axis.title.y = element_text(size = 16),
-          axis.text.y = element_text(size = 14),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.background = element_blank(),
-          plot.title = element_text(size=18),
-          legend.text = element_text(size = 15),
-          legend.title = element_text(size = 15),
-          strip.text = element_text(size = 15),
-          strip.background = element_blank()))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/rarefaction_studies.png",
-       width = 14, height = 7, plot = rarefaction_studies)
-
-
-## X: importance vs prevalence ###########################
-# For downsampling stuff, but keep it out for now
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/imp_prevs.RData")
-
-imp_prev_original <- combined_importance_prev_lifestyles_genus %>%
-  group_by(taxon, lifestyle) %>%
-  summarize(Prevalence = mean(prevalence),
-            Importance = mean(importance)) %>%
-  mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized", no = "non-Industrialized"),
-         Prevalence = Prevalence / 100,
-         figure = "Complete")
-
-imp_prev_downsampling <- imp_prevs %>%
-  filter(counts > 1) %>%
-  group_by(taxon, lifestyle) %>%
-  summarize(Prevalence = mean(prev),
-            Importance = mean(importance)) %>%
-  mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized", no = "non-Industrialized"),
-         figure = "Downsampling")
-
-imp_prev_original %>% filter(Prevalence > 0.75, Importance > 50) %>% pull(taxon) %>% unique
-imp_prev_downsampling %>% filter(Prevalence > 0.75, Importance > 50) %>% pull(taxon) %>% unique
-
-(prev_imp_combined <- bind_rows(imp_prev_original, imp_prev_downsampling) %>%
-    filter(figure == "Complete") %>% #, Prevalence > 0.15) %>%
-    ggplot(., aes(x = Prevalence, y = Importance, color = Lifestyle, fill = Lifestyle)) +
-    geom_point(alpha = 0.8, size = 0.8) +
-    geom_smooth(method = "lm", aes(fill = Lifestyle)) +
-    stat_cor(method = "spearman",
-             cor.coef.name = "spearman",
-             size = 5,
-             show.legend = F) +
-    scale_color_manual(values = fixed_colors, 
-                       guide = guide_legend(override.aes = list(shape = 15, size = 5, alpha = 1))) +
-    scale_fill_manual(values = fixed_colors) +
-    xlim(0,1)+
-    # ggtitle("B") +
-    # facet_wrap(~figure) +
-    theme(axis.title.x = element_text(size = 16),
-          axis.text.x = element_text(size = 14),
-          axis.title.y = element_text(size = 16),
-          axis.text.y = element_text(size = 14),
-          panel.grid.majors = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.background = element_blank(),
-          plot.title = element_text(size=18),
-          strip.text = element_text(size = 15, hjust = 0),
-          strip.background = element_blank(),
-          legend.text = element_text(size = 15),
-          legend.title = element_text(size = 15)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/prev_imp_combined.png",
-       width = 14, height = 7, plot = prev_imp_combined)
