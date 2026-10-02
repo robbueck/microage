@@ -32,21 +32,20 @@ merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
 
 # downsample the larger lifestyle to the size of the smaller lifestyle
 # optional, attempt to have equal study sizes
-get_list <- function(vl, dfrm, max = NA, study_prob = F) {
-  lst <- lapply(c(industrialized = "industrialized", non_industrialized = "non_industrialized"),
+get_list <- function(vl, dfrm, study_prob = F) {
+  lst <- lapply(c(industrialized = "Industrialized", non_industrialized = "Non-industrialized"),
                 function(x) {dfrm %>%
-                    filter(lifestyle == x) %>%
+                    filter(Lifestyle == x) %>%
                     pull(vl) %>% unique}) # get all ids for that lifestyle
-  len <- lapply(lst, length) %>% unlist %>% min(c(., max), na.rm = T)
-  print(vl)
-  if(study_prob) {  # downsample the category to more equal study sizes
-    probs <- dfrm %>% 
-      group_by(study) %>%
+  len <- lapply(lst, length) %>% unlist %>% min(c(.), na.rm = T)
+  if(study_prob) {  #downsample the category to more equal study sizes
+    probs <- dfrm %>% group_by(study) %>%
       mutate(prob = 1/length(unique(!!sym(vl)))) %>%
       ungroup() %>%
       select(prob, !!sym(vl)) %>%
       distinct() %>%
       column_to_rownames(vl)
+    # print(lst)
     # lapply(lst, function(x) print(probs[x,]))
     final_list <- lapply(lst, function(x) sample(x, len, prob = probs[x,]))
   } else {
@@ -55,6 +54,41 @@ get_list <- function(vl, dfrm, max = NA, study_prob = F) {
   return(final_list)
 }
 
+downsampling_age_dist <- function(otu_tbl_df) {
+  stds <- get_list("study", otu_tbl_df)
+  df_red <- otu_tbl_df %>%
+    filter(study %in% stds$non_industrialized | study %in% stds$industrialized) # subsample studies
+  sbjcts <- get_list("subject_ID", otu_tbl_df, study_prob = T)
+  df_red_sb <- df_red %>%
+    filter(subject_ID %in% sbjcts$non_industrialized | subject_ID %in% sbjcts$industrialized) # subsample individuals
+  df_red_y <- filter(df_red_sb, age <= 365) # same distribuition for above and below one year respectively
+  df_red_o <- filter(df_red_sb, age > 365)
+  smpls_y <- get_list("sample_ID", df_red_y, study_prob = T)
+  df_red_y_smp <- df_red_y %>%
+    filter(sample_ID %in% smpls_y$non_industrialized | sample_ID %in% smpls_y$industrialized)
+  if(length(table(df_red_o$Lifestyle)) > 1) {
+    smpls_o <- get_list("sample_ID", df_red_o, study_prob = T)
+    df_red_o_smp <- df_red_o %>%
+      filter(Lifestyle == "non_industrialized" | sample_ID %in% smpls_o$industrialized) %>%
+      filter(Lifestyle == "industrialized" | sample_ID %in% smpls_o$non_industrialized) # subsample samples
+    df_red_smp <- rbind(df_red_y_smp, df_red_o_smp)
+  } else {
+    print("No old samples found for one Lifestyle")
+    df_red_smp <- df_red_y_smp
+  }
+  df_red_smp <- df_red_smp %>%
+    select(where(~ !is.numeric(.x) || sum(.x, na.rm = TRUE) > 0))
+  return(df_red_smp)
+}
+
+unique_taxa_per_ls <- function(df) {
+  df %>% select(-c("study", "subject_ID", "sample_ID", "age", "sample_sum")) %>%
+    group_by(Lifestyle) %>%
+    summarise(across(everything(), ~ sum(.))) %>%
+    column_to_rownames("Lifestyle") %>%
+    `==` (0) %>%
+    rowSums()
+}
 
 
 # create a dataframe with pairwise distances in long format combined with metadata about the pairs

@@ -257,7 +257,7 @@ n_ls_specific_taxa %>% group_by(Lifestyle) %>%
 load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/all_pcoa_genus_combined.RData")
 plot_pcoa_data <- pcoa_aitch_genus_1$x %>% data.frame() %>% 
   rownames_to_column(., "run_accession") %>%
-  left_join(., pcoa_metadata, by = "run_accession") %>%
+  left_join(., meta_df, by = "run_accession") %>%
   mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized",
                             no = "non-Industrialized"),
          Study = gsub("_", " et. al ", study) %>%
@@ -594,7 +594,7 @@ explained_var_rare <- (pcoa_aitch_genus_rare_h$sdev^2 / sum(pcoa_aitch_genus_rar
   round(.,digits = 1)
 plot_pcoa_data_rare <- pcoa_aitch_genus_rare_h$x %>% as.data.frame() %>%
   rownames_to_column("run_accession") %>%
-  left_join(., pcoa_metadata, by = "run_accession") %>%
+  left_join(., meta_df, by = "run_accession") %>%
   mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized",
                             no = "non-Industrialized"))
 

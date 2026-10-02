@@ -188,7 +188,7 @@ plot_pcoa_data <- pcoa_aitch_genus_1$x %>%
   as.data.frame() %>%
   select(PC1, PC2, PC3, PC4, PC5) %>%
   rownames_to_column("run_accession") %>%
-  left_join(pcoa_metadata, by = "run_accession") %>%
+  left_join(meta_df, by = "run_accession") %>%
   mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized",
                             no = "non-Industrialized"))
 
