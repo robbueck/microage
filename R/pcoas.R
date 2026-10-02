@@ -29,7 +29,6 @@ library(furrr)
 
 
 source("./pcoa_functions.R")
-source("./setlists.R")
 options(future.globals.maxSize = 25000 * 1024^2)
 
 # Switches #######################
