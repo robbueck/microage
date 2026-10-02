@@ -163,23 +163,6 @@ pred_from_list <- function(model_list, metad,
 # get R2 and coefficient for each study for each model from a list of models
 # go with R2 on rank transformed predictions
 get_lm_list <- function(pred_df, grouping){
-  # model_df <- pred_df %>%
-  #   unite(., col = "grouping_x_model_name", grouping, sep = "xxx") %>%
-  #   group_by(grouping_x_model_name) %>%
-  #   summarize(R2 = cor(pred, age, method = "spearman"),
-  #             RSME = sqrt(mean(age - pred)^2)) %>%
-  #   ungroup() %>%
-  #   separate(., grouping_x_model_name, into = c(grouping), sep = "xxx")
-  
-  # model_df <- pred_df %>%
-  #   filter(study != "davis_2017") %>%
-  #   unite(., col = "grouping_x_model_name", grouping, sep = "xxx") %>%
-  #   group_by(grouping_x_model_name) %>%
-  #   summarize(R2 = Rsq(gamlss(pred ~ pb(age))),
-  #             RSME = sqrt(mean(age - pred)^2)) %>%
-  #   ungroup() %>%
-  #   separate(., grouping_x_model_name, into = c(grouping), sep = "xxx")
-  
   pred_df <- pred_df %>%
     tidyr::unite(., col = "grouping_x_model_name", grouping, sep = "xxx") %>%
     mutate(pred = rank(pred))     # rank transform the predictions
@@ -436,4 +419,191 @@ create_caret_df <- function(ps_object, transformation = "identity", mean_ab_cuto
   data_set_caret[,missing_cols] <- 0
   data_set_caret <- data_set_caret[,cols_to_keep]
   return(list(features = data_set_caret, metadata = metadf))
+}
+
+
+# shap analysis:
+pfun <- function(object, newdata) {
+  require(ranger)
+  predict(object, data = newdata)$predictions
+}
+
+get_shap_long <- function(model, test_data = NULL, features = NULL) {
+  if(!is.null(features)) {
+    if(all(features == "important")) {
+      print("runnin shap analysis on the 15 most important features")
+      features <- model$finalModel$variable.importance %>% sort %>% tail(., n = 15) %>% names
+    }
+  }
+  if(is.null(test_data)) {
+    test_data <- model$trainingData %>%
+      select(-.outcome)
+  }
+  features <- features[features %in% colnames(test_data)]
+  shap <- fastshap::explain(
+    model$finalModel,
+    X = test_data,
+    pred_wrapper = pfun,
+    nsim = 10,
+    shap_only = F,
+    feature_names = features,
+    parallel = T)
+  shap_long <- shap$shapley_values %>%
+    data.frame() %>%
+    mutate(sample_ID = 1:nrow(.)) %>%
+    pivot_longer(cols = -sample_ID,
+                 names_to = "taxon",
+                 values_to = "shap_value")
+  ab_long <- shap$feature_values %>%
+    data.frame() %>%
+    mutate(across(everything(), ~ . / max(.)))%>%
+    mutate(sample_ID = 1:nrow(.)) %>%
+    rownames_to_column(var = "run_accession") %>%
+    pivot_longer(cols = -c(sample_ID, run_accession),
+                 names_to = "taxon",
+                 values_to = "ab_value")
+  # ab-value: feature values divided by the maximum value of that feature => max = 1
+  ab_shap_long <- left_join(shap_long, ab_long) 
+  return(ab_shap_long)
+}
+
+
+
+# for lodocv:
+get_final_model <- function(ps, transform = "compositional",
+                            extra_cols = c("Observed", "Shannon", "lifestyle_industrialized"),
+                            prefilter = F,
+                            rf_depth = 2000,
+                            pre_processing = "nzv",
+                            pre_processing_option = list(uniqueCut = 5)) {
+  for_caret_list_train <- create_caret_df(ps_object = ps, transformation = transform,
+                                          mean_ab_cutoff = 5e-5, study_prevalence_cutoff = 2,
+                                          prevalence_in_study_cutoff = 5,
+                                          additional_cols = extra_cols,
+                                          rf_depth = rf_depth,
+                                          only_multiple_samples = F)
+  if(prefilter) {
+    family_cleaned_cor <- cor(for_caret_list_train$features)
+    highlyCorrelated_family_cleaned <- findCorrelation(family_cleaned_cor, cutoff=0.8)
+    for_caret_list_train$features <- for_caret_list_train$features[,-highlyCorrelated_family_cleaned]
+  }
+  splits <- group_vfold_cv(for_caret_list_train$metadata, group = "study")
+  caret_split <- rsample2caret(splits)
+  tc_grouped <- trainControl(method = "cv",
+                             savePredictions = "final",
+                             selectionFunction = "oneSE", # function to select the best model
+                             index = caret_split$index,
+                             indexOut = caret_split$indexOut,
+                             preProcOptions = pre_processing_option,
+                             returnData = T,
+                             allowParallel = T)
+  rf_model_list <- caretList(y=for_caret_list_train$metadata$age, x=for_caret_list_train$features,
+                             metric="Rsquared",
+                             trControl=tc_grouped,
+                             preProcess = pre_processing,
+                             methodList=c("lasso"),
+                             tuneList = list(
+                               rf1=caretModelSpec(method=adapt_ranger, tuneGrid=expand.grid(mtry = c(3, 10),
+                                                                                            num.trees = c(200),
+                                                                                            min.node.size = c(5, 10),
+                                                                                            splitrule = c("variance"),
+                                                                                            replace = F),
+                                                  importance = "permutation")
+                             )
+  )
+  if(is.null(rf_model_list$rf1$trainingData)){
+    training_data <- for_caret_list_train$features
+    training_data$.outcome <- for_caret_list_train$metadata$age
+    rf_model_list$rf1$trainingData <- training_data
+  }
+  return(rf_model_list)
+}
+
+get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
+                                      transform = "compositional",
+                                      extra_cols = c("Observed", "Shannon", "lifestyle_industrialized"),
+                                      prefilter = F,
+                                      pre_processing = "nzv",
+                                      rf_depth = 2000,
+                                      pre_processing_option = list(uniqueCut = 5)){
+  print(test_set)
+  oldDF <- as(sample_data(ps), "data.frame") 
+  trainDF <- subset(oldDF, study != test_set)
+  testDF <- subset(oldDF, study == test_set)
+  ps_train <- ps
+  ps_test <- ps
+  rm(ps)
+  sample_data(ps_train) <- sample_data(trainDF)
+  sample_data(ps_test) <- sample_data(testDF)
+  for_caret_list_train <- create_caret_df(ps_object = ps_train, transformation = transform,
+                                          mean_ab_cutoff = 5e-5, study_prevalence_cutoff = 2,
+                                          prevalence_in_study_cutoff = 5,
+                                          rf_depth = rf_depth,
+                                          additional_cols = extra_cols,
+                                          only_multiple_samples = F)
+  if(prefilter) {
+    family_cleaned_cor <- cor(for_caret_list_train$features)
+    highlyCorrelated_family_cleaned <- findCorrelation(family_cleaned_cor, cutoff=0.8)
+    for_caret_list_train$features <- for_caret_list_train$features[,-highlyCorrelated_family_cleaned]
+  }
+  for_caret_list_test <- create_caret_df(ps_object = ps_test, transformation = transform,
+                                         additional_cols = extra_cols,
+                                         only_multiple_samples = F,
+                                         rf_depth = rf_depth,
+                                         filter_features = colnames(for_caret_list_train$features))
+  
+  # subset features in test set:
+  common_features <- colnames(for_caret_list_test$features) %in% colnames(for_caret_list_train$features)
+  for_caret_list_test$features <- for_caret_list_test$features[,common_features]
+  
+  splits <- group_vfold_cv(for_caret_list_train$metadata, group = "study")
+  caret_split <- rsample2caret(splits)
+  tc_grouped <- trainControl(method = "cv",
+                             savePredictions = "final",
+                             selectionFunction = "oneSE", # function to select the best model
+                             index = caret_split$index,
+                             indexOut = caret_split$indexOut,
+                             preProcOptions = pre_processing_option,
+                             allowParallel = T)
+  possibleError <- try(
+    expr = {
+      rf_model_list <- caretList(y=for_caret_list_train$metadata$age, x=for_caret_list_train$features,
+                                 metric="Rsquared",
+                                 trControl=tc_grouped,
+                                 preProcess = pre_processing,
+                                 methodList=c("lasso"),
+                                 tuneList = list(
+                                   rf1=caretModelSpec(method=adapt_ranger, tuneGrid=expand.grid(mtry = c(3, 10),
+                                                                                                num.trees = c(50, 200),
+                                                                                                min.node.size = c(5, 10),
+                                                                                                splitrule = c("variance"),
+                                                                                                replace = F),
+                                                      num.threads = 10,
+                                                      importance = "permutation")
+                                 )
+      )
+      write_rds(rf_model_list,
+                file = paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+                              prefix, "_", test_set, ".rds"))
+      # Boruta feature importance
+      print("Run Boruta")
+      sel_feat <- Boruta(x=for_caret_list_train$features, y = for_caret_list_train$metadata$age,
+                         num.trees = rf_model_list$rf1$bestTune$num.trees, 
+                         mtry = rf_model_list$rf1$bestTune$mtry, num.threads = ceiling(n_cores/5))
+      write_rds(sel_feat,
+                file = paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+                              prefix, "_", test_set, "_boruta_res.rds"))
+      
+      predictions <- cbind(for_caret_list_test$metadata,
+                           predict(rf_model_list, newdata = for_caret_list_test$features))
+    }
+  )
+  if(inherits(possibleError, "try-error")){
+    message("No model fit possible for: ", test_set)
+    predictions <- mutate(for_caret_list_test$metadata,
+                          lasso = NA,
+                          rf1 = NA)
+  }
+  
+  return(predictions)
 }
