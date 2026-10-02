@@ -1,13 +1,6 @@
 # merge all data for all studies
 
-# 16S data is stranded, remove reverse complement matches from BLAST
-
-# to choose the best fitting alignment between two ASVs:
-# take the longest one
-# create a minimum length, based on the lengths distribution of the sequences.
-# E.g. not less than 90% of the length of the smallest of boths sequences
-
-setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/")
+setwd("/fast/AG_Forslund/rob/mm_index/publication_R_scripts/R")
 library(tidyverse)
 library(DECIPHER)
 library(pheatmap)
@@ -24,8 +17,8 @@ library(viridis)
 library(ggpubr)
 library(dplyr)
 
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/dada_2_functions.R")
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/setlists.R")
+source("./dada_2_functions.R")
+source("./setlists.R")
 
 add_asv_alpha_div <- function(ps_object) {
   ps_object <- subset_taxa(ps_object, genus != "Mitochondria")
@@ -60,7 +53,7 @@ add_asv_alpha_div <- function(ps_object) {
 
 merged_set <- "all"
 
-merging_step <- T
+merging_step <- F
 rarecurve_step <- F
 diversity_step <- F
 ordination_step <- F
@@ -86,7 +79,7 @@ if (is.null(opt$threads)){
 study_names <- set_list[[merged_set]]
 names(study_names) <- study_names
 # load phyloseq objects
-ps_list <- lapply(study_names, function(x){readRDS(list.files(paste("../study_data", x, sep = "/"),
+ps_list <- lapply(study_names, function(x){readRDS(list.files(paste("/fast/AG_Forslund/rob/mm_index/study_data", x, sep = "/"),
                                                    pattern =  "phyloseq.*\\d\\.rds",
                                                    full.names = T))})
 # lapply(study_names, function(x){list.files(paste("../study_data", x, sep = "/"),
@@ -123,15 +116,24 @@ if(merging_step){
                                              consensus_seq = F,
                                              cores = n_cores,
                                              simple_merge = T)
-  saveRDS(final_ps_genus, paste0("../merged_data/all/", merged_set, "_phyloseq_raw_genus.rds"))
-  saveRDS(final_ps_family, paste0("../merged_data/all/", merged_set, "_phyloseq_raw_family.rds"))
-  saveRDS(final_ps_class, paste0("../merged_data/all/", merged_set, "_phyloseq_raw_class.rds"))
+  saveRDS(final_ps_genus, paste0("../data/", merged_set, "_phyloseq_raw_genus.rds"))
+  saveRDS(final_ps_family, paste0("../data/", merged_set, "_phyloseq_raw_family.rds"))
+  saveRDS(final_ps_class, paste0("../data/", merged_set, "_phyloseq_raw_class.rds"))
 } else {
-  final_ps_genus <- readRDS(paste0("../merged_data/all/", merged_set, "_phyloseq_raw_genus.rds"))
-  final_ps_family <- readRDS(paste0("../merged_data/all/", merged_set, "_phyloseq_raw_family.rds"))
-  final_ps_class <- readRDS(paste0("../merged_data/all/", merged_set, "_phyloseq_raw_class.rds"))
+  final_ps_genus <- readRDS(paste0("../data/", merged_set, "_phyloseq_raw_genus.rds"))
+  final_ps_family <- readRDS(paste0("../data/", merged_set, "_phyloseq_raw_family.rds"))
+  final_ps_class <- readRDS(paste0("../data/", merged_set, "_phyloseq_raw_class.rds"))
 }
-
+# final_ps_class@sam_data <- final_ps_class@sam_data %>%
+#   data.frame() %>% select(subject_ID, sample_ID, run_accession, 
+#                           lifestyle, age, country, Instrument, X,
+#                           geographic_location_.latitude.,
+#                           geographic_location_.longitude.,
+#                           n_unassigned_asvs_study, n_total_asvs_study,
+#                           n_unassigned_asvs_sample, n_total_asvs_sample,
+#                           shannon_asv, richness_asv, n_unassigned_asvs_sample_raref,
+#                           read_count, study_accession, study, birthmode, health) %>%
+#   sample_data()
 
 print(sort(final_ps_genus@sam_data$study %>% unique))
 end_time <- Sys.time()
@@ -149,120 +151,54 @@ class(otu_matrix) <- "matrix"
 start_time <- Sys.time()
 if(rarecurve_step) {
   raredat <- rarecurve(otu_matrix, step = 50, tidy = T)
-    saveRDS(raredat, paste0("../merged_data/all/", merged_set, "_rarefaction_genus.rds"))
+  sample_data(final_ps_genus)$sample_sum <- sample_sums(final_ps_genus)
+  sample_data(final_ps_genus) <- sample_data(final_ps_genus) %>%
+    data.frame %>%
+    mutate(age_cat = cut(age, breaks=c(-1, 7, 30, 60, 180, 365, 730, Inf),
+                         labels=c("0-7", "7-30", "30-60", "60-180", "180-365", "365-730", "over 730")),
+           cutoff = case_when(study == "blanton_2016" ~ 5000,
+                              study == "bockulich_2016" ~ 2500,
+                              study == "vatanen_2018" ~ 2500,
+                              study == "roswall_2021" ~ 5000,
+                              study == "hill_2017" ~ 5000,
+                              study == "sprockett_2020" ~ 5000,
+                              study == "pannaraj_2017" ~ 1000,
+                              study == "lim_2015" ~ 2500,
+                              study == "subramanian_2014" ~ 700,
+                              study == "wampach_2018" ~ 2000,
+                              study == "gehrig_2019" ~ 2000,
+                              study == "kristensen_2020" ~ 2500,
+                              study == "stokholm_2018" ~ 2000,
+                              study == "raman_2019" ~ 2500,
+                              study == "reyman_2019" ~ 5000,
+                              study == "kamngona_2019" ~ 5000,
+                              study == "kortekangas_2020" ~ 5000,
+                              study == "muinck_2018" ~ 10000,
+                              study == "beller_2021" ~ 2500,
+                              study == "bender_2016" ~ 5000,
+                              study == "davis_2017" ~ 2500,
+                              study == "morandini_2023" ~ 2000)) %>%
+    sample_data()
+  
+  raredat <- left_join(raredat , sample_data(final_ps_genus), by = c("Site" = "run_accession")) %>%
+    select(Site, Sample, Species, X, subject_ID, sample_ID, age, country, study, 
+           lifestyle, sample_sum, age_cat, cutoff)
+  
+  n_reads <- data.frame(n_reads = sample_sums(final_ps_genus), 
+                        names = sample_names(final_ps_genus), 
+                        study = final_ps_genus@sam_data$study,
+                        age_cat = final_ps_genus@sam_data$age_cat,
+                        cutoff = final_ps_genus@sam_data$cutoff)
+  save(raredat, n_reads, file = "../data/rarefaction_curves.RData")
+    
 } else {
-  raredat <- readRDS(paste0("../merged_data/all/", merged_set, "_rarefaction_genus.rds"))
+  load("../data/rarefaction_curves.RData")
 }
 rm(otu_matrix)
 end_time <- Sys.time()
 print("Total time for rarecurve step:")
 print(end_time - start_time)
 
-
-sample_data(final_ps_genus)$sample_sum <- sample_sums(final_ps_genus)
-sample_data(final_ps_genus) <- sample_data(final_ps_genus) %>%
-  data.frame %>%
-  mutate(age_cat = cut(age, breaks=c(-1, 7, 30, 60, 180, 365, 730, Inf),
-                       labels=c("0-7", "7-30", "30-60", "60-180", "180-365", "365-730", "over 730")),
-         cutoff = case_when(study == "blanton_2016" ~ 5000,
-                            study == "bockulich_2016" ~ 2500,
-                            study == "vatanen_2018" ~ 2500,
-                            study == "roswall_2021" ~ 5000,
-                            study == "hill_2017" ~ 5000,
-                            study == "sprockett_2020" ~ 5000,
-                            study == "pannaraj_2017" ~ 1000,
-                            study == "lim_2015" ~ 2500,
-                            study == "subramanian_2014" ~ 700,
-                            study == "wampach_2018" ~ 2000,
-                            study == "gehrig_2019" ~ 2000,
-                            study == "kristensen_2020" ~ 2500,
-                            study == "stokholm_2018" ~ 2000,
-                            study == "raman_2019" ~ 2500,
-                            study == "reyman_2019" ~ 5000,
-                            study == "kamngona_2019" ~ 5000,
-                            study == "kortekangas_2020" ~ 5000,
-                            study == "muinck_2018" ~ 10000,
-                            study == "beller_2021" ~ 2500,
-                            study == "bender_2016" ~ 5000,
-                            study == "davis_2017" ~ 2500,
-                            study == "morandini_2023" ~ 2000)) %>%
-  sample_data()
-# same for family data
-sample_data(final_ps_family)$sample_sum <- sample_sums(final_ps_family)
-sample_data(final_ps_family) <- sample_data(final_ps_family) %>%
-  data.frame %>%
-  mutate(age_cat = cut(age, breaks=c(-1, 7, 30, 60, 180, 365, 730, Inf),
-                       labels=c("0-7", "7-30", "30-60", "60-180", "180-365", "365-730", "over 730")),
-         cutoff = case_when(study == "blanton_2016" ~ 5000,
-                            study == "bockulich_2016" ~ 2500,
-                            study == "vatanen_2018" ~ 2500,
-                            study == "roswall_2021" ~ 5000,
-                            study == "hill_2017" ~ 5000,
-                            study == "sprockett_2020" ~ 5000,
-                            study == "pannaraj_2017" ~ 1000,
-                            study == "lim_2015" ~ 2500,
-                            study == "subramanian_2014" ~ 700,
-                            study == "wampach_2018" ~ 2000,
-                            study == "gehrig_2019" ~ 2500,
-                            study == "kristensen_2020" ~ 2500,
-                            study == "stokholm_2018" ~ 2000,
-                            study == "raman_2019" ~ 2500,
-                            study == "reyman_2019" ~ 5000,
-                            study == "kamngona_2019" ~ 5000,
-                            study == "kortekangas_2020" ~ 5000,
-                            study == "muinck_2018" ~ 10000,
-                            study == "beller_2021" ~ 2500,
-                            study == "bender_2016" ~ 5000,
-                            study == "davis_2017" ~ 2500,
-                            study == "morandini_2023" ~ 2000)) %>%
-  sample_data()
-
-# and for class data
-sample_data(final_ps_class)$sample_sum <- sample_sums(final_ps_class)
-sample_data(final_ps_class) <- sample_data(final_ps_class) %>%
-  data.frame %>%
-  mutate(age_cat = cut(age, breaks=c(-1, 7, 30, 60, 180, 365, 730, Inf),
-                       labels=c("0-7", "7-30", "30-60", "60-180", "180-365", "365-730", "over 730")),
-         cutoff = case_when(study == "blanton_2016" ~ 5000,
-                            study == "bockulich_2016" ~ 2500,
-                            study == "vatanen_2018" ~ 2500,
-                            study == "roswall_2021" ~ 5000,
-                            study == "hill_2017" ~ 5000,
-                            study == "sprockett_2020" ~ 5000,
-                            study == "pannaraj_2017" ~ 1000,
-                            study == "lim_2015" ~ 2500,
-                            study == "subramanian_2014" ~ 700,
-                            study == "wampach_2018" ~ 2000,
-                            study == "gehrig_2019" ~ 2500,
-                            study == "kristensen_2020" ~ 2500,
-                            study == "stokholm_2018" ~ 2000,
-                            study == "raman_2019" ~ 2500,
-                            study == "reyman_2019" ~ 5000,
-                            study == "kamngona_2019" ~ 5000,
-                            study == "kortekangas_2020" ~ 5000,
-                            study == "muinck_2018" ~ 10000,
-                            study == "beller_2021" ~ 2500,
-                            study == "bender_2016" ~ 5000,
-                            study == "davis_2017" ~ 2500,
-                            study == "morandini_2023" ~ 2000)) %>%
-  sample_data()
-
-
-
-gc()
-raredat <- left_join(raredat , sample_data(final_ps_genus), by = c("Site" = "run_accession")) %>%
-  select(Site, Sample, Species, X, subject_ID, sample_ID, age, country, study, 
-         lifestyle, sample_sum, age_cat, cutoff)
-# raredat <- raredat %>% filter(study %in% c("reyman_2019", "stokholm_2018",
-#                                            "hesla_2014", "kristensen_2020",
-#                                            "bockulich_2016", "muinck_2018",
-#                                            "morandini_2023"))
-n_reads <- data.frame(n_reads = sample_sums(final_ps_genus), 
-                      names = sample_names(final_ps_genus), 
-                      study = final_ps_genus@sam_data$study,
-                      age_cat = final_ps_genus@sam_data$age_cat,
-                      cutoff = final_ps_genus@sam_data$cutoff)
-save(raredat, n_reads, file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/rarefaction_curves.RData")
 
 p1 <- ggplot(raredat %>% filter(study %in% c("raman_2019", "pannaraj_2017"))) +
   theme_bw() +
@@ -299,80 +235,10 @@ gc()
 # filter criteria for each study: wampach_2018: 5.000, the rest 10.000, hill_2017: 15.00
 final_ps_genus <- final_ps_genus %>% subset_samples(sample_sum >= cutoff)
 final_ps_family <- final_ps_family %>% subset_samples(sample_sum >= cutoff)
-final_ps_class <- final_ps_class %>% subset_samples(sample_sum >= cutoff)
 
 # remove missing values:
 final_ps_genus <- final_ps_genus %>% subset_samples(!is.na(age))
 final_ps_family <- final_ps_family %>% subset_samples(!is.na(age))
-final_ps_class <- final_ps_class %>% subset_samples(!is.na(age))
 
-saveRDS(final_ps_genus, paste0("../merged_data/all/", merged_set, "_phyloseq_rf_filter_genus.rds"))
-# as csv:
-write.csv(final_ps_genus@otu_table %>% data.frame(),
-          "/fast/AG_Forslund/rob/mm_index/merged_data/all/otu_matrix_combined_rf_filter_genus.csv")
-write.csv(final_ps_genus@tax_table %>% data.frame(),
-          "/fast/AG_Forslund/rob/mm_index/merged_data/all/tax_table_combined_rf_filter_genus.csv")
-write.csv(final_ps_genus@sam_data %>% data.frame() %>% select(age, subject_ID, run_accession, study, lifestyle, country),
-          "/fast/AG_Forslund/rob/mm_index/merged_data/all/metadata_combined_rf_filter_genus.csv")
-
-saveRDS(final_ps_family, paste0("../merged_data/all/", merged_set, "_phyloseq_rf_filter_family.rds"))
-saveRDS(final_ps_class, paste0("../merged_data/all/", merged_set, "_phyloseq_rf_filter_class.rds"))
-
-
-## check issue with sampling depth ##############
-mdat <- final_ps_genus@sam_data %>% data.frame()
-mdat %>%
-  group_by(study, lifestyle) %>%
-  summarise(sample_sum = mean(sample_sum)) %>%
-  ggplot(., aes(x = lifestyle, y = sample_sum)) +
-  geom_violin() +
-  geom_boxplot() +
-  geom_jitter()
-
-# Diversity analyses on genus level
-# filter taxa
-final_ps_genus@sam_data$total_reads <- sample_sums(final_ps_genus)
-final_ps_transform_genus <- final_ps_genus %>% 
-  microbiome::transform(transform = "compositional") %>%
-  filter_taxa(function(x){sum(x > 0) > 5}, TRUE) %>%  # prevalence cutoff 10 % of the smallest study
-  filter_taxa(function(x) mean(x[x > 0]) > 5e-5, TRUE) %>%  # mean abundance cutoff, only counting abundances > 0
-  prune_samples(samples = (sample_sums(.) != 0)) %>%
-  subset_samples(., age <= 730)
-# pt <- annotation_ratio_plot(final_ps_transform_genus)
-# ggsave(paste0(merged_set, "annotated_reads_filtered.pdf"), device = "pdf", plot = pt)
-# rm(final_ps)
-final_ps_genus_filtered <- final_ps_genus %>% 
-  prune_taxa(taxa_names(final_ps_transform_genus), .) %>%
-  prune_samples(sample_names(final_ps_transform_genus),.)
-  
-
-
-
-# Diversity analyses on family level
-# filter taxa
-final_ps_family@sam_data$total_reads <- sample_sums(final_ps_family)
-final_ps_transform_family <- final_ps_family %>% 
-  microbiome::transform(transform = "compositional") %>%
-  filter_taxa(function(x){sum(x > 0) > 5}, TRUE) %>%  # prevalence cutoff 10 % of the smallest study
-  filter_taxa(function(x) mean(x[x > 0]) > 5e-5, TRUE) %>%  # mean abundance cutoff, only counting abundances > 0
-  prune_samples(samples = (sample_sums(.) != 0)) %>%
-  subset_samples(., age <= 730)
-
-# pt <- annotation_ratio_plot(final_ps_transform_family)
-# ggsave(paste0(merged_set, "annotated_reads_filtered.pdf"), device = "pdf", plot = pt)
-# rm(final_ps)
-final_ps_family_filtered <- final_ps_family %>% 
-  prune_taxa(taxa_names(final_ps_transform_family), .) %>%
-  prune_samples(sample_names(final_ps_transform_family),.)
-
-
-all_studies <- set_list$all
-studies_here <- unique(final_ps_transform_family@sam_data$study) %in% all_studies
-
-
-# ordination analysis
-
-metadata_df <- data.frame(final_ps_transform_genus@sam_data)
-
-all_studies <- set_list$all
-studies_here <- unique(final_ps_transform_family@sam_data$study) %in% all_studies
+saveRDS(final_ps_genus, paste0("../data/", merged_set, "_phyloseq_rf_filter_genus.rds"))
+saveRDS(final_ps_family, paste0("../data/", merged_set, "_phyloseq_rf_filter_family.rds"))
