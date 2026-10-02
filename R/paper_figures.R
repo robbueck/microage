@@ -17,6 +17,8 @@ library(glue)
 library(ggExtra)
 library(wesanderson)
 library(ggdist)
+library(maps)
+
 
 setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures")
 # define global colors for lifestyle:
@@ -24,19 +26,28 @@ fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", 
 
 # Figure 1: Methods ############################################################
 ## studies map #####################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/16S_study_locations_ls.RData")
+load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.RData")
+
 hdi_data <- read.table("/fast/AG_Forslund/rob/mm_index/R_scripts/hdi_data.txt",
                        sep = "\t", col.names = c("region", "hdi")) 
+world_coordinates <- map_data("world")
+world_coordinates <- world_coordinates %>% filter(!(region %in% c("Antarctica", "South Sandwich Islands", "Fiji")))
 world_coordinates <- left_join(world_coordinates, hdi_data, by = "region") %>%
   mutate(HDI = hdi, .keep = "unused")
 
+df_16S <- meta_df %>% 
+  mutate(latitude = round(geographic_location_.latitude., 2), 
+         longitude = round(geographic_location_.longitude., 2), 
+         .keep = "unused") %>% 
+  group_by(latitude, longitude, study, lifestyle, country) %>%
+  summarize(sample_count = n())
 
 (map_16S <- ggplot() +
     geom_map(
       data = world_coordinates, map = world_coordinates,
       aes(long, lat, map_id = region, alpha = HDI),
       color = "grey70", fill = "grey", size = 0.15)+
-    geom_point(data = data_loc_comb %>% filter (Type == "16S") %>%
+    geom_point(data = df_16S %>% 
                  mutate(Lifestyle = ifelse(lifestyle == "industrialized", yes = "Industrialized", no = "non-Industrialized")),
                aes(x = longitude, y = latitude, size = sample_count,  fill = Lifestyle),
                alpha = 0.6,
@@ -78,7 +89,6 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/16S_study_locatio
 
 # Figure 2 #####################################################################
 ## A: Alpha div ##############
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.RData")
 meta_df %>% filter(study == "raman_2019") %>% select(lifestyle, country) %>% table
 meta_df_noraman <- meta_df %>%
   mutate(Lifestyle = ifelse(lifestyle == "industrialized",
