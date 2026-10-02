@@ -1,6 +1,5 @@
 # create model on industrialized or non-industrialized studies and predict age in the respective other set of studies
 # downsample each lifestyle to eaqual sizes
-setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/")
 library(caret)
 library(caretEnsemble)
 library(tidyverse)
@@ -21,10 +20,9 @@ library(ggprism)
 library(permute)
 library(Boruta)
 library(gamlss)
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/alt_models.R")
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/regression_functions.R")
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/setlists.R")
-source("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/lifestyle_regression_functions.R")
+source("./alt_models.R")
+source("./regression_functions.R")
+source("./lifestyle_regression_functions.R")
 
 # Switches ######################################
 resample_genus_step <- F
@@ -182,7 +180,6 @@ get_predictions <- function(ps_test, ps_train, extra_cols = c("Observed", "Shann
                     trControl = tc_grouped,
                     preProcess = c("nzv"),
                     tuneGrid = rfGrid)
-  # write_rds(rf_model, paste("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/downsampled_models/"))
   predictions <- for_caret_list_test$metadata %>%
     mutate(pred = predict(rf_model, newdata = for_caret_list_test$features))
   if(run_importances) {
@@ -242,7 +239,7 @@ options(ranger.num.threads = ceiling(sqrt(n_cores)))
 
 # genus data ###################################################################
 
-ps_object_genus_raw <- readRDS("/fast/AG_Forslund/rob/mm_index/merged_data/all/all_phyloseq_rf_filter_genus.rds") %>%
+ps_object_genus_raw <- readRDS("../data/all_phyloseq_rf_filter_genus.rds") %>%
   subset_samples(age <= 730 & age > 1)
 metadata <- ps_object_genus_raw %>%
   sample_data() %>%
@@ -250,16 +247,16 @@ metadata <- ps_object_genus_raw %>%
 ps_object_genus_raw@sam_data$health <- "healthy"
 
 # add sick children for prediction:
-ps_sub <- readRDS("/fast/AG_Forslund/rob/mm_index/study_data/subramanian_2014/phyloseq_subramanian_2014_malnurished.rds")
-ps_gehr <- readRDS("/fast/AG_Forslund/rob/mm_index/study_data/gehrig_2019/phyloseq_gehrig_2019_malnurished.rds")
+ps_sub <- readRDS("../data/phyloseq_subramanian_2014_malnurished.rds")
+ps_gehr <- readRDS("../data/phyloseq_gehrig_2019_malnurished.rds")
 ps_gehr@sam_data$sample_sum <- sample_sums(ps_gehr)
 ps_sub@sam_data$sample_sum <- sample_sums(ps_sub)
 merged_ps_genus <- merge_phyloseq(ps_sub %>% aggregate_taxa(level = "genus"),
                                   ps_gehr %>% aggregate_taxa(level = "genus")) %>%
   subset_samples(., health == "SAM")
-ps_gibson <- readRDS("/fast/AG_Forslund/rob/studies/16S/gibson_2016/dada2/phyloseq_gibson_2016.rds")
-ps_ryan <- readRDS("/fast/AG_Forslund/rob/studies/16S/ryan_2019/dada2/phyloseq_ryan_2019.rds")
-ps_kamdar <- readRDS("/fast/AG_Forslund/rob/studies/16S/kamdar_2020/dada2/phyloseq_kamdar_2020.rds")
+ps_gibson <- readRDS("../data/phyloseq_gibson_2016.rds")
+ps_ryan <- readRDS("../data/phyloseq_ryan_2019.rds")
+ps_kamdar <- readRDS("../data/phyloseq_kamdar_2020.rds")
 
 merged_ps_preterm <- merge_phyloseq(ps_gibson %>% aggregate_taxa(level = "genus"),
                                     ps_ryan %>% aggregate_taxa(level = "genus"),
@@ -272,11 +269,10 @@ if(resample_genus_sick_step){
   downsampled_genus_preds_sick <- future_map(1:50, ~ run_all(ps = ps_object_genus_raw_healthy_sick, 
                                                              run_importances = F,
                                                              n_run = .x))
-  save(downsampled_genus_preds_sick, file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_intra_lifestyle_genus_downsampled_sick.RData")
+  save(downsampled_genus_preds_sick, file = "../data/inter_intra_lifestyle_genus_downsampled_sick.RData")
 } else {
-  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_intra_lifestyle_genus_downsampled_sick.RData")
+  load("../data/inter_intra_lifestyle_genus_downsampled_sick.RData")
 }
-print("finished here")
 
 get_preds <- function(x) {
   x <- lapply(x, `[[`, "preds") %>% bind_rows()
@@ -289,23 +285,22 @@ downsampled_genus_df <- lapply(downsampled_genus_preds_sick, get_preds) %>%
             pred_combined = mean(pred_combined, na.rm = T),
             .groups = "drop")
 save(downsampled_genus_df, 
-     file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/downsampled_genus_df.RData")
-
-
+     file = "..//data/downsampled_genus_df.RData")
 
 
 # downsampling healthy only #########################################
+# requires lots of memory and time
 tic()
 if(resample_genus_step){
   # permuted_preds_genus <- get_permute_preds(ps = ps_object_genus_raw, blocks = "study")
   downsampled_genus_preds_imps <- future_map(1:50, ~ run_all(ps = ps_object_genus_raw, n_run = .x))
-  save(downsampled_genus_preds_imps, file = "/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_intra_lifestyle_genus_downsampled.RData")
+  save(downsampled_genus_preds_imps, file = "../data/inter_intra_lifestyle_genus_downsampled.RData")
 } else {
-  load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/inter_intra_lifestyle_genus_downsampled.RData")
+  load("../data/inter_intra_lifestyle_genus_downsampled.RData")
 }
 toc()
 
-# create corr       elation list
+# create correlation list
 get_lm_list_from_list <- function(x) {
   x <- lapply(x, `[[`, "preds") %>% bind_rows()
   x %>% 
@@ -323,7 +318,7 @@ lifestyle_lm_down <- lapply(downsampled_genus_preds_imps, get_lm_list_from_list)
 
 
 # default model:
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/all_nested_cv_genus_no_ls.RData")
+load("../data/all_nested_cv_genus_no_ls.RData")
 genus_nested_cv_preds_long <- genus_no_ls_nested_cv_preds %>%
   pivot_longer(cols = c("rf1", "lasso"), names_to = "model_name", values_to = "pred" )
 all_lm_list <- get_lm_list(pred_df = genus_nested_cv_preds_long, grouping = c("study", "lifestyle", "model_name")) %>%
@@ -340,37 +335,6 @@ df_p_val_lifestyle_genus <- lifestyle_lm_list %>%
   rstatix::adjust_pvalue(p.col = "p", method = "bonferroni") %>%
   rstatix::add_significance(p.col = "p.adj", cutpoints = c(0, 1e-03, 0.01, 0.05, 0.1, 1)) %>% 
   rstatix::add_xy_position(x = "lifestyle", dodge = 0.8) 
-
-
-ggplot(lifestyle_lm_list, aes(x=lifestyle, y = R2)) +
-    geom_boxplot(aes(fill = training_set)) +
-    xlab("Validation set") +
-    ylab(bquote("Performance ["~R^2~"]")) +
-    ggtitle("B)") +
-    add_pvalue(df_p_val_lifestyle_genus,
-               label = "{p.adj.signif}",
-               label.size = 4.5,
-               # step.increase = 0.05,
-               tip.length = 0.01,
-               xmin = "xmin",
-               xmax = "xmax",
-               show.legend = FALSE) +
-    ylim(0, 1.1) +
-    theme(axis.title.x = element_text(size = 16),
-          axis.text.x = element_text(size = 14),
-          axis.title.y = element_text(size = 16),
-          axis.text.y = element_text(size = 14),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.background = element_blank(),
-          plot.title = element_text(size=18),
-          # legend.position=c(0.7, 0.08),
-          legend.text = element_text(size = 15),
-          legend.title = element_text(size = 15))
-
-lifestyle_lm_list %>%
-  group_by(lifestyle, training_set) %>%
-  summarize(mean_r2 = mean(R2))
 
 
 
@@ -453,7 +417,7 @@ n_imp_fts_per_study %>%
   geom_jitter() +
   ylim(0, NA)
 
-# means in each llifestyle:
+# means in each lifestyle:
 n_imp_fts_per_study %>%
   group_by(model_lifestyle) %>%
   summarize(mean_counts = mean(counts))
@@ -613,5 +577,5 @@ ggplot(n_imps_n_total, aes(x = counts, y = n_taxa, color = lifestyle)) +
   geom_smooth()
 
 
-save(lifestyle_lm_list, n_imp_fts_per_study, imp_prevs, unique_per_lifestyle,
-     file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/downsampling_data.RData")
+save(lifestyle_lm_list, n_imp_fts_per_study,
+     file = "../data/downsampling_data.RData")
