@@ -1,51 +1,6 @@
 library(Boruta)
 
 
-# shap analysis:
-pfun <- function(object, newdata) {
-  require(ranger)
-  predict(object, data = newdata)$predictions
-}
-
-get_shap_long <- function(model, test_data = NULL, features = NULL) {
-  if(!is.null(features)) {
-    if(all(features == "important")) {
-      print("runnin shap analysis on the 15 most important features")
-      features <- model$finalModel$variable.importance %>% sort %>% tail(., n = 15) %>% names
-    }
-  }
-  if(is.null(test_data)) {
-    test_data <- model$trainingData %>%
-      select(-.outcome)
-  }
-  features <- features[features %in% colnames(test_data)]
-  shap <- fastshap::explain(
-    model$finalModel,
-    X = test_data,
-    pred_wrapper = pfun,
-    nsim = 10,
-    shap_only = F,
-    feature_names = features,
-    parallel = T)
-  shap_long <- shap$shapley_values %>%
-    data.frame() %>%
-    mutate(sample_ID = 1:nrow(.)) %>%
-    pivot_longer(cols = -sample_ID,
-                 names_to = "taxon",
-                 values_to = "shap_value")
-  ab_long <- shap$feature_values %>%
-    data.frame() %>%
-    mutate(across(everything(), ~ . / max(.)))%>%
-    mutate(sample_ID = 1:nrow(.)) %>%
-    rownames_to_column(var = "run_accession") %>%
-    pivot_longer(cols = -c(sample_ID, run_accession),
-                 names_to = "taxon",
-                 values_to = "ab_value")
-  # ab-value: feature values divided by the maximum value of that feature => max = 1
-  ab_shap_long <- left_join(shap_long, ab_long) 
-  return(ab_shap_long)
-}
-
 # get boruta importances from a dataset
 get_boruta_important_features <- function(train_data, model, study){
   boruta_res <- Boruta(x=train_data$features, y = train_data$metadata$age,
@@ -63,35 +18,11 @@ get_boruta_important_features <- function(train_data, model, study){
 }
 
 
-# shap analysis can be done also on the traing data
-# https://stats.stackexchange.com/questions/615290/if-feature-importance-is-only-computed-based-on-training-set-does-it-mean-one-s
-# load model without respective study
-# test_set <- "wampach_2018"
-# prefix <- "genus_data_no_ls"
-# data <- bind_cols(genus_train_data$features, genus_train_data$metadata %>% select(study))
-# get_shap_per_study <- function(test_set, prefix, data){
-#   # load model and boruta data
-#   model <- read_rds(file = paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
-#                           prefix, "_", test_set, ".rds"))
-#   model <- model$rf1
-#   boruta_res <- read_rds(file = paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
-#                           prefix, "_", test_set, "_boruta_res.rds"))
-#   important_features <- boruta_res$finalDecision %>% grep("Confirmed", value = T,.) %>% names
-#   # subset data
-#   test_data <- test_data %>%
-#     filter(study != test_set)
-#   important_features <- important_features[important_features %in% colnames(test_data)]
-#   # run shap
-# }
 
 get_predictions_lifestyle <- function(test_set, ps){
   print(test_set)
   oldDF <- as(sample_data(ps), "data.frame") 
   trainDF <- subset(oldDF, lifestyle != test_set)
-  # %>%
-  #   subset(., is.na(antibiotics_before) | !antibiotics_before) %>%
-  #   subset(., is.na(antibiotics_one_week_before) | !antibiotics_one_week_before) %>%
-  #   subset(., is.na(antibiotics_any) | !antibiotics_any)
   
   testDF <- subset(oldDF, lifestyle == test_set)
   ps_train <- ps
