@@ -24,8 +24,6 @@ error_and_asv_step <- F
 remove_chimeras_step <- F
 id_taxa_step <- F
 tree_step <- F
-phyloseq_step <- T
-ordination_step <- F
 
 
 
@@ -223,89 +221,3 @@ if(phyloseq_step) {
 } else {
   ps <- readRDS("/fast/AG_Forslund/rob/studies/16S/wampach_2018/dada2/phyloseq_wampach_2018.rds")
 }
-
-# compare a-diversity between different groups
-diversity_plots(ps_object = ps, x = "age", colour = "age")
-ggsave("dada2/a_div_age.pdf", device = "pdf")
-
-# check metadata in PCoA
-# remove zero count samples
-ps <- prune_samples(sample_sums(ps) >= 10, ps)
-ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
-if(ordination_step) {
-  dist.bray <- phyloseq::distance(ps.prop, method = "bray")
-  dist.unifrac <- phyloseq::distance(ps.prop, method = "wunifrac")
-  # ordinate
-  pcoa_bray <- pcoa(dist.bray)
-  pcoa_unifr <- pcoa(dist.unifrac)
-  tsne_bray <- Rtsne(dist.bray, is_distance = TRUE, perplexity = 25)
-  tsne_unifrac <- Rtsne(dist.unifrac, is_distance = TRUE, perplexity = 25)
-  umap <- umap(otu_table(ps.prop))
-  save(dist.bray, dist.unifrac, pcoa_bray, pcoa_unifr, tsne_bray, tsne_unifrac, umap, file = "dada2/ordinations.RData")
-} else {
-  load("dada2/ordinations.RData")
-}
-
-rownames(metadata_wamp) <- metadata_wamp$run_accession
-cor(pcoa_bray$vectors,
-    metadata_wamp[rownames(pcoa_bray$vectors),c("age")], use = "complete.obs") %>% head
-cor(pcoa_unifr$vectors,
-    metadata_wamp[rownames(pcoa_bray$vectors),c("age")], use = "complete.obs") %>% head
-
-
-ps.prop@sam_data$age_fact <- as.factor(metadata_wamp$age)
-#PCoA
-# bray-curtis
-p1 <- plot_ordination(ps.prop, pcoa_bray, color="age", title="Bray NMDS") +
-  scale_color_gradientn(name = "age", colors = topo.colors(7))
-# unifrac dist:
-p2 <- plot_ordination(ps.prop, pcoa_unifr, color="age", title="Unifrac NMDS") +
-  scale_color_gradientn(name = "age", colors = topo.colors(7))
-pf <- grid.arrange(p1, p2)
-ggsave("dada2/PCoA_age.pdf", device = "pdf", plot = pf)
-
-# t-SNE
-tsnedata <- data.frame(tsne_bray$Y) %>%
-  dplyr::rename(tSNE1 = X1, tSNE2 = X2) %>%
-  bind_cols(data.frame(sample_data(ps)))
-ps1 <- ggplot(tsnedata, aes(x = tSNE1, y = tSNE2, color = age)) +
-  geom_point() +
-  theme(aspect.ratio = 1) +
-  scale_color_gradientn(name = "age", colors = topo.colors(7)) + 
-  ggtitle("t-SNE Bray")
-# unifrac
-tsnedata <- data.frame(tsne_unifrac$Y) %>%
-  dplyr::rename(tSNE1 = X1, tSNE2 = X2) %>%
-  bind_cols(data.frame(sample_data(ps)))
-ps2 <- ggplot(tsnedata, aes(x = tSNE1, y = tSNE2, color = age)) +
-  geom_point() +
-  theme(aspect.ratio = 1) +
-  scale_color_gradientn(name = "age", colors = topo.colors(7)) +
-  ggtitle("t-SNE Unifrac")
-psf <- grid.arrange(ps1, ps2, ncol = 2)
-ggsave("dada2/tSNE.pdf", device = "pdf", plot = psf)
-
-fit_adonis <- adonis2(dist.bray ~ age + antibiotics_before + birth_weight + gestational_age + food + birthmode + sex,
-                      data = metadata_wamp, by="margin", na.action = na.omit)
-saveRDS(fit_adonis, file = "dada2/permanova.RData")
-fit_adonis <- readRDS("dada2/permanova.RData")
-print(fit_adonis)
-
-
-
-# UMAP
-umapdata <- umap$layout %>%
-  data.frame() %>%
-  dplyr::rename(UMAP1 = X1, UMAP2 = X2) %>%
-  bind_cols(data.frame(sample_data(ps)))
-ggplot(umapdata, aes(x = UMAP1, y = UMAP2, color = age)) +
-  geom_point() +
-  theme(aspect.ratio = 1) +
-  scale_color_gradientn(name = "age", colors = topo.colors(7)) +
-  ggtitle("UMAP")
-ggsave("dada2/umap.pdf", device = "pdf")
-
-# export to be used with picrust:
-writeXStringSet(ps@refseq, "dada2/ASVs.fasta", format = "fasta")
-otu_table_out <- t(as.data.frame(ps@otu_table))
-write.table(data.frame(OTU = rownames(otu_table_out), otu_table_out), file = "dada2/otu_table.tsv", sep = "\t", row.names = F, quote = F)

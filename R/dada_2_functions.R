@@ -3,15 +3,6 @@
 library(ape)
 library(btools)
 library(rBLAST)
-# loss_ratio <- function(reduced, total) {
-#   if(total == 0 & reduced == 0){
-#     return(1)
-#   } else if(reduced == 0){
-#     warning("Total is empty")
-#   } else {
-#     return(  (total - reduced)/total)
-#   }
-# }
 get_n_cores <- function(nc){
   if(is.logical(nc)){
     if(nc) {
@@ -254,43 +245,6 @@ build_tree_ps <- function(x, cores = NULL) {
 }
 
 
-# plot diversity indices:
-# set colour to "read_counts_final" to color the points according to the number of reads used to calculate the indices
-diversity_plots <- function(ps_object, x = NULL, colour = "read_counts_final", shape = NULL,
-                            measures = c("observed", "chao1", "diversity_shannon", "evenness_simpson", "dominance_simpson", "PD"),
-                            angle = 0, vjust = 1, hjust=1, alpha = 1, size = 1){
-  require(tidyr)
-  metadata <- sample_data(ps_object)
-  alpha.div <- microbiome::alpha(ps_object, index = c("Observed","Chao1", "Shannon", "Simpson")) 
-  alpha.div<- as.data.frame(alpha.div)
-  if("PD" %in% measures) {
-    set.seed(711)
-    phy_tree(ps_object) <- ape::root(phy_tree(ps_object), sample(taxa_names(ps_object), 1), resolve.root = TRUE)
-    pd <- btools::estimate_pd(ps_object)
-    alpha.div<- cbind(alpha.div, pd)
-  }
-  metadata <- cbind(metadata, alpha.div)
-  metadata <- cbind2(metadata, as.data.frame(sample_sums(ps_object)))
-  colnames(metadata)[ncol(metadata)] <- "read_counts_final"
-  metadata_long <- metadata %>% 
-    pivot_longer(
-      cols = all_of(measures), 
-      names_to = "index",
-      values_to = "value"
-    ) %>%
-    arrange(lifestyle)
-    # mutate(lifestyle = factor(lifestyle, levels = c("non_industrialized", "industrialized")))
-  richness_map <- aes_string(x = x, y = "value", colour = colour, shape = shape)
-  p <- ggplot(metadata_long, richness_map) + # aes(x = age, y = value, color = age)) +
-    geom_point(alpha = alpha, size = size) +
-    {if(length(unique(measures)) > 1)facet_wrap(~index, scales = "free_y")} +
-    {if(class(metadata[,c(colour)]) == "numeric")scale_color_gradientn(name = colour, colors = topo.colors(7))} +
-    ylab("Alpha Diversity Measure") +
-    theme(axis.text.x = element_text(angle = angle, vjust = vjust, hjust=hjust))
-  return(p)
-}
-
-
 # load a blastdb for a file:
 load_blastdbs <- function(s) {
   message("searching for a blastdb for: ", s)
@@ -488,118 +442,6 @@ blast_ps_function <- function(query_name, subject_name, ps_list, cores = 2){
   print(end_time - start_time)
   return(blast_results_small)
 }
-
-
-
-# Plot the ratio of unassigned reads at different taxonomic levels
-# adds a horizontal line at the median ratio of annotated reads over all ranks
-annotation_ratio_plot <- function(ps,
-                                  levels = c("phylum", "class", "order", "family", "genus"),
-                                  x = "rank",
-                                  color = "rank"){
-  get_unassigned_ratio <- function(x) {
-    y <- ps %>%
-      microbiome::aggregate_taxa(level = x) %>%
-      otu_table() %>%
-      data.frame
-    return(1-(y[c("Unknown"),] / colSums(y)))
-  }
-  ratios <- map(levels, get_unassigned_ratio)
-  ratios_df <- suppressMessages(purrr::reduce(ratios, full_join))
-  rownames(ratios_df) <- levels
-  ratios_df_long <- ratios_df %>% tibble::rownames_to_column(var = "rank") %>%
-    pivot_longer(-rank, names_to = "Sample", values_to = "values")
-  ratios_df_long$rank <- factor(ratios_df_long$rank, levels = levels)
-  ratios_df_long <- left_join(ratios_df_long, data.frame(sample_data(ps)), by = c("Sample" = "run_accession"))
-  median_line <- median(ratios_df_long$values)
-  pl <- ggplot(ratios_df_long, aes(x = !!sym(x), y = values, color = !!sym(color))) +
-    geom_boxplot() +
-    ggbeeswarm::geom_quasirandom() +
-    ylab("Annotated reads") +
-    geom_hline(yintercept=median_line)
-    theme(legend.position="none")
-  return(pl)
-}
-
-
-# plot a PCoA ordination
-plot_pcoa <- function(ps_object, ordination,
-                      color = NULL,
-                      shape = NULL,
-                      ellipses = F,
-                      label = NULL,
-                      title = NULL,
-                      alpha = 1,
-                      size = 1,
-                      axes = 1:2,
-                      plot_dens = F){
-  DF <- plot_ordination(ps_object, ordination, justDF = T, axes = axes)
-  if (!is.null(color)) {
-    if (!color %in% names(DF)) {
-      warning("Color variable was not found in the available data you provided.", 
-              "No color mapped.")
-      color <- NULL
-    }
-  }
-  if (!is.null(shape)) {
-    if (!shape %in% names(DF)) {
-      warning("Shape variable was not found in the available data you provided.", 
-              "No shape mapped.")
-      shape <- NULL
-    }
-  }
-  if (!is.null(label)) {
-    if (!label %in% names(DF)) {
-      warning("Label variable was not found in the available data you provided.", 
-              "No label mapped.")
-      label <- NULL
-    }
-  }
-  x = colnames(DF)[1]
-  y = colnames(DF)[2]
-  if (ncol(DF) <= 2) {
-    message("No available covariate data to map on the points for this plot `type`")
-    ord_map = aes_string(x = x, y = y)
-  } else {ord_map = aes_string(x = x, y = y, color = color, shape = shape, 
-                               na.rm = TRUE)
-  }
-  p <- ggplot(DF, ord_map) + geom_point(na.rm = TRUE, alpha = alpha, size = size)
-  if (!is.null(label)) {
-    label_map <- aes_string(x = x, y = y, label = label)
-    p = p + geom_text(label_map, data = rm.na.phyloseq(DF, 
-                                                       label), size = 2, vjust = 1.5, na.rm = TRUE)
-  }
-  if (!is.null(title)) {
-    p = p + ggtitle(title)
-  }
-  if (length(ordination$values$Eigenvalues[axes]) > 0) {
-    eigvec = ordination$values$Eigenvalues
-    fracvar = eigvec[axes]/sum(eigvec)
-    percvar = round(100 * fracvar, 1)
-    strivar = as(c(p$label$x, p$label$y), "character")
-    strivar = paste0(strivar, "   [", percvar, "%]")
-    p = p + xlab(strivar[1]) + ylab(strivar[2])
-  }
-  if (ellipses) {
-    p <- p + stat_ellipse(ord_map)
-  }
-  if (plot_dens) {
-    xdens <- cowplot::axis_canvas(p, axis = "x")+
-      geom_density(data = DF, aes(x = Axis.1, fill = !!sym(color)),
-                   alpha = 0.7, size = 0.2)
-    
-    ydens <- cowplot::axis_canvas(p, axis = "y", coord_flip = TRUE)+
-      geom_density(data = DF, aes(x = Axis.2, fill = !!sym(color)),
-                   alpha = 0.7, size = 0.2)+
-      coord_flip()
-    
-    p <- insert_xaxis_grob(p, xdens, grid::unit(.2, "null"), position = "top")
-    p <- insert_yaxis_grob(p, ydens, grid::unit(.2, "null"), position = "right")
-    p <- ggdraw(p)
-  }
-  return(p)
-}
-
 
 
 # fix merge_taxa2 naming
