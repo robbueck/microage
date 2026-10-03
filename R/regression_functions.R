@@ -583,7 +583,7 @@ get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
                                  )
       )
       write_rds(rf_model_list,
-                file = paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+                file = paste0("..//data/nested_cv_dataset_models/",
                               prefix, "_", test_set, ".rds"))
       # Boruta feature importance
       print("Run Boruta")
@@ -591,7 +591,7 @@ get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
                          num.trees = rf_model_list$rf1$bestTune$num.trees, 
                          mtry = rf_model_list$rf1$bestTune$mtry, num.threads = ceiling(n_cores/5))
       write_rds(sel_feat,
-                file = paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+                file = paste0("../data/nested_cv_dataset_models/",
                               prefix, "_", test_set, "_boruta_res.rds"))
       
       predictions <- cbind(for_caret_list_test$metadata,

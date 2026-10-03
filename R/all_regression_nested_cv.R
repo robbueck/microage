@@ -1,4 +1,3 @@
-setwd("/fast/AG_Forslund/rob/mm_index/publication_R_scripts/R/")
 library(caret)
 library(caretEnsemble)
 library(tidyverse)
@@ -207,10 +206,13 @@ if(final_model_genus_no_ls_step){
   shap_out_genus_no_ls <- get_shap_long(final_model_genus_no_ls$rf1, 
                                   features = "important",
                                   test_data = genus_train_data$features)
-  save(final_model_genus_no_ls, shap_out_genus_no_ls,
+  save(final_model_genus_no_ls,
        file = "../data/final_no_ls_genus.RData")
+  save(shap_out_genus_no_ls,
+       file = "../large_files/shap_no_ls_genus.RData")
 } else {
   load("../data/final_no_ls_genus.RData")
+  load("../large_files/shap_no_ls_genus.RData")
 }
 
 
@@ -355,10 +357,13 @@ if(final_model_genus_industrialized_step){
   shap_out_genus_industrialized <- get_shap_long(final_model_genus_industrialized$rf1, 
                                         features = "important",
                                         test_data = genus_train_data_industrialized$features)
-  save(final_model_genus_industrialized, shap_out_genus_industrialized,
+  save(final_model_genus_industrialized,
        file = "../data/final_industrialized_genus.RData")
+  save(shap_out_genus_industrialized,
+       file = "../large_files/shap_industrialized_genus.RData")
 } else {
   load("../data/final_industrialized_genus.RData")
+  load("../large_files/shap_industrialized_genus.RData")
 }
 
 

@@ -1,6 +1,5 @@
 # plot PCoAs
 version
-setwd("/fast/AG_Forslund/rob/mm_index/publication_R_scripts/R/")
 library(tidyverse)
 library(phyloseq)
 library(microbiome)
@@ -648,7 +647,7 @@ drivers_df_rare_vh <- pcoa_aitch_genus_rare_vh$rotation %>% as.data.frame() %>%
          PC2 = PC2)
 
 save(pcoa_aitch_genus_1, top_drivers_1, pcoa_aitch_genus_rare_h,
-     file = "../data/all_pcoa_genus_combined.RData")
+     file = "../large_files/all_pcoa_genus_combined.RData")
 
 
 

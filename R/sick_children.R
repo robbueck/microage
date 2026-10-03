@@ -638,6 +638,7 @@ ggplot(all_preds_combined_preterm,
              show.legend = FALSE) +
   theme_classic()
 
+save(all_preds_combined, all_preds_combined_preterm, file = "../data/sick_age_predictions.RData")
 
 
 ## PCoA ########################

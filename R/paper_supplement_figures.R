@@ -26,14 +26,13 @@ library(ggbeeswarm)
 cowplot::set_null_device("agg")
 
 
-setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement")
 # define global colors for lifestyle:
 fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", Combined = "#BC85A9")
 
 # Figure S1 #####################################################################
 # rarefaction curves
 # comment out to prevent extensive usage of memory and time
-# load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/rarefaction_curves.RData")
+# load("../data/rarefaction_curves.RData")
 # raredat <- raredat %>%
 #   mutate(study = paste0(gsub("^(.)", "\\U\\1",
 #                              gsub("_", " et al. ", study),
@@ -94,7 +93,7 @@ fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", 
 #           panel.grid.minor = element_blank(),
 #           panel.background = element_blank()))
 # 
-# ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S1_combined_supplement.png",
+# ggsave("../figures/figure_S1_combined_supplement.png",
 #        dpi = 900,
 #        width = 14, height = 12.72, plot = rarefaction_curves)
 
@@ -102,7 +101,7 @@ fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", 
 
 # Figure S2 #####################################################################
 ## A: Prevalence Venn diagram ###########################################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/prevalence_lifestyle.RData")
+load("../data/prevalence_lifestyle.RData")
 prevalence_lifestyle_g_bin <- prevalence_lifestyle_g %>%
   column_to_rownames("lifestyle") %>%
   t() %>%
@@ -206,8 +205,8 @@ circle_data_raref <- data.frame(
 cowplot::plot_grid(prev_venn, prev_venn_raref)
 
 ## B: Number of features per lifestyle resampled ###########################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/downsampling_data.RData")
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.RData")
+load("../data/downsampling_data.RData")
+load("../data/a_div_genus_present.RData")
 
 pvals_unique_per_lifestyle <-  n_ls_specific_taxa %>%
   rstatix::wilcox_test(count ~ Lifestyle, paired = T) %>%
@@ -254,7 +253,7 @@ n_ls_specific_taxa %>% group_by(Lifestyle) %>%
 
 
 ## C: sequencing depth ################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/all_pcoa_genus_combined.RData")
+load("../large_files/all_pcoa_genus_combined.RData")
 plot_pcoa_data <- pcoa_aitch_genus_1$x %>% data.frame() %>% 
   rownames_to_column(., "run_accession") %>%
   left_join(., meta_df, by = "run_accession") %>%
@@ -335,7 +334,7 @@ theme_raefy <- function() {
     theme_raefy())
 
 rarefactions_cobined <- cowplot::plot_grid(studies_rarefaction, subjects_rarefactin, samples_rarefaction)
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/rarefaction_figures.png", 
+cowplot::save_plot("../figures//rarefaction_figures.png", 
                    rarefactions_cobined, bg = "white", base_height = 11, base_width = 7, dpi = 900)
 
 
@@ -363,7 +362,7 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/suppl
           legend.text = element_text(size = 15),
           legend.title = element_text(size = 15)))
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/a_div_genus_richness_present.png",
+ggsave("../figures/a_div_genus_richness_present.png",
        width = 11, height = 6, plot = a_div_s_genus_richness)
 
 
@@ -390,7 +389,7 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/a_div_
          legend.text = element_text(size = 15),
          legend.title = element_text(size = 15)))
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/a_div_genus_richness_present.png",
+ggsave("../figures/a_div_genus_richness_present.png",
        width = 11, height = 6, plot = a_div_s_genus_richness)
 
 ## I: SA and Bangladesh cohorts ########################
@@ -456,7 +455,7 @@ cowplot::set_null_device("agg")
                                                           label_fontface = "plain"),
                                        align = "hv",
                                        ncol = 2))
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S2_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S2_combined_supplement.png", 
                    fig_S2_combined, dpi = 900, bg = "white", base_height = 20, base_width = 14)
 
 
@@ -584,7 +583,7 @@ explained_var <- (pcoa_aitch_genus_1$sdev^2 / sum(pcoa_aitch_genus_1$sdev^2)) %>
           panel.background = element_blank(),
           legend.text = element_text(size = 15, margin = margin(r = 13)),
           legend.title = element_text(size = 15)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/all_pcoa_genus_study.png",
+ggsave("../figures/all_pcoa_genus_study.png",
        width = 14, height = 7, plot = pcoa_study + theme(legend.position = "none"))
 
 
@@ -623,7 +622,7 @@ plot_pcoa_data_rare <- pcoa_aitch_genus_rare_h$x %>% as.data.frame() %>%
           legend.position = "top",
           legend.text = element_text(size = 13, margin = margin(r = 13)),
           legend.title = element_text(size = 13)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/all_pcoa_genus_raref_ls.png",
+ggsave("../figures/all_pcoa_genus_raref_ls.png",
        width = 14, height = 7, plot = pcoa_lifestyle_rare)
 
 
@@ -690,7 +689,7 @@ cowplot::set_null_device("agg")
                                                          label_fontface = "plain"),
                    align = "hv",
                    rel_heights = c(1, 1, 1), ncol = 1))
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S3_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S3_combined_supplement.png", 
                    fig_S3_combined, dpi = 900, bg = "white", base_height = 19, base_width = 14)
 
 
@@ -716,7 +715,7 @@ add_predictions <- function(data, model) {
 }
 
 ## A: per study performamce ####################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/genus_nested_cv_no_ls.RData")
+load("../data/all_nested_cv_genus_no_ls.RData")
 
 (age_prediction_dotplot_study <- genus_no_ls_nested_cv_preds %>% 
     select(age, rf1, study, lifestyle) %>%
@@ -835,7 +834,7 @@ plot_data <- fit %>%
                                        label_fontface = "plain"))
 
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S4_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S4_combined_supplement.png", 
                    fig_S4_combined, dpi = 900, bg = "white", base_height = 14, base_width = 14)
 
 
@@ -843,7 +842,7 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/suppl
 # Figure S5 Model performance comparisons #######################
 
 ## A: RSME performance ######################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfomance_genus.RData")
+load("../data/lifestyle_perfomance_genus.RData")
 lifestyle_lm_list_genus <- lifestyle_lm_list_genus %>%
   mutate(Lifestyle = case_when(lifestyle == "industrialized" ~ "Industrialized",
                                lifestyle == "non_industrialized" ~ "non-Industrialized",
@@ -967,7 +966,7 @@ df_p_val_lifestyle_family <- lifestyle_lm_list_family %>%
 
 
 ## C: rarefaction performance #####################################
-load(file = "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfomance_genus_raref_h.RData")
+load(file = "../data/lifestyle_perfomance_genus_raref_h.RData")
 
 lifestyle_lm_list_genus_rare_h <- lifestyle_lm_list_genus_rare_h %>%
   mutate(Lifestyle = case_when(lifestyle == "industrialized" ~ "Industrialized",
@@ -1091,7 +1090,7 @@ df_p_val_lifestyle_genus <- lifestyle_lm_list %>%
           # legend.position=c(0.7, 0.08),
           legend.text = element_text(size = 15),
           legend.title = element_text(size = 15)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/downsampling_performance.png",
+ggsave("../figures/downsampling_performance.png",
        width = 14, height = 7, plot = downsampling_performance)
 
 ## E: number of important features #########################
@@ -1134,7 +1133,7 @@ n_imp_fts_per_study %>%
           legend.position = "none",
           legend.text = element_text(size = 15),
           legend.title = element_text(size = 15)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/n_imp_fts_resampling.png",
+ggsave("../figures/n_imp_fts_resampling.png",
        width = 14, height = 7, plot = n_imp_fts_resampling)
 
 
@@ -1159,13 +1158,13 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/n_imp_
                                        ncol = 1,
                                        rel_heights = c(1, 0.1, 1, 0.1, 1)))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S5_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S5_combined_supplement.png", 
                    fig_S5_combined, dpi = 900, bg = "white", base_height = 15, base_width = 14)
 
 
 # Figure S6 ####################################################################
 
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/imp_shap_prev.RData")
+load("../large_files/imp_shap_prev.RData")
 ## A: Importance, Prevalence ####################
 imp_prev_ls <- combined_importance_prev_lifestyles_genus %>%
   mutate(model = ifelse(model == "industrialized",
@@ -1365,11 +1364,11 @@ cowplot::set_null_device("agg")
                                      nrow = 2,
                                      rel_heights = c(1, 0.1)))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S6_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S6_combined_supplement.png", 
                    fig_6_combined, dpi = 900,
                    bg = "white", base_height = 20, base_width = 12)
 # Fig S7 ############################################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/ks_test_res.RData")
+load("../data/ks_test_res.RData")
 
 ## A: Single lifestyle taxa prevalence ##################### 
 # Difference in prevalence between lifestyles depending on their importance:
@@ -1494,9 +1493,6 @@ ls_importance <- imp_prev_ls %>%
          panel.grid.minor = element_blank(),
          panel.background = element_blank(),
          panel.grid.major.y = element_blank()))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/ks_figure.png", width = 11, height = 7,
-       plot = ks_plot)
-
 
 
 (fig_7_combined <- cowplot::plot_grid(single_ls_prev, 
@@ -1515,13 +1511,13 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/ks_fig
                                       label_x = -0.015))
                                                        
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S7_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S7_combined_supplement.png", 
                    fig_7_combined, dpi = 900,
                    bg = "white", base_height = 11, base_width = 14)
 
 # Figure S8: #######################################################################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/phyloseq_supplement.RData")
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/prevalences.RData")
+load("../large_files/phyloseq_supplement.RData")
+load("../data/prevalences.RData")
 
 selected_taxa <- c("Staphylococcus", "Faecalibacterium", "Prevotella",
                    "Lactobacillus", "Bifidobacterium")
@@ -1651,7 +1647,7 @@ abundance_data_rarefied <- ps_object_genus_raref_comp %>%
 #                                       label_size = 18,
 #                                       label_fontface = "plain")
 # 
-# cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S8_combined_supplement.png", 
+# cowplot::save_plot("../figures/figure_S8_combined_supplement.png", 
 #                    fig_S8_combined, dpi = 900,
 #                    bg = "white", base_height = 21.5, base_width = 14)
 
@@ -1664,7 +1660,7 @@ names(fixed_colors_sick) <- paste0(names(fixed_colors_sick), " healthy")
 fixed_colors_sick <- c(fixed_colors_sick, `non-Industrialized SAM` = "#812B8C", `Industrialized preterm` = "#D9731A")
 
 ## A: Malnourished PCA ################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/malnurished_pcoa.RData")
+load("../data/malnurished_pcoa.RData")
 explained_var_mal <- ((pcoa_aitch_genus_mal$sdev^2/sum(pcoa_aitch_genus_mal$sdev^2)) * 100) %>%
   round(.,digits = 1)
 mdat_malnurished_pca <- mdat_malnurished_all[rownames(pcoa_aitch_genus_mal$x),] %>%
@@ -1704,7 +1700,7 @@ malnurished_permanova_label <- c("R[Lifestyle]^2 == 0.09*';'~p < 0.001", "~R[Hea
           legend.text = element_text(size = 13, margin = margin(r = 13)),
           legend.title = element_text(size = 13)))
 ## B: Preterm PCA ############################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/preterm_pcoa.RData")
+load("../data/preterm_pcoa.RData")
 
 explained_var_pre <- ((pcoa_aitch_genus_preterm$sdev^2/sum(pcoa_aitch_genus_preterm$sdev^2)) * 100) %>%
   round(.,digits = 1)
@@ -1814,7 +1810,7 @@ preterm_permanova_label <- c("R[Lifestyle]^2 == 0.03*';'~p < 0.001", "~R[Health]
 
 
 ## E: Malnourished SHAP complete ############################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/sick_shap_data.RData")
+load("../large_files/sick_shap_data.RData")
 pvals_svz_mal_age <- shap_mdat_mal %>%
   mutate(age_bin = floor(ceiling(age) / 30)) %>%
   group_by(display_taxon, age_bin) %>%
@@ -1973,14 +1969,14 @@ cowplot::set_null_device("agg")
                                       label_fontface = "plain"),
                    ncol = 1, rel_heights = c(1, 0.1, 0.8, 0.2, 0.1, 2)))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S9_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S9_combined_supplement.png", 
                    fig_S9_combined, dpi = 900,
                    bg = "white", base_height = 23, base_width = 14)
 
 
 
 # Fig. 10 ##############################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/sick_age_predictions.RData")
+load("../data/sick_age_predictions.RData")
 ## A: Malnourished only non-industrialized #####################################
 all_preds_combined_only_bangladesh <- all_preds_combined %>% 
   filter(study %in% c("subramanian_2014", "gehrig_2019"))
@@ -2266,7 +2262,7 @@ pvals_maz_preterm_downsampled <- all_preds_combined_preterm %>%
                                       label_fontface = "plain",
                                       rel_heights = c(1, 0.1, 1, 0.1, 1, 0.1, 1, 0.1, 1, 0.1, 1, 0.2)))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S10_combined_supplement.png", 
+cowplot::save_plot("../figures//figure_S10_combined_supplement.png", 
                    fig_S10_combined, dpi = 900,
                    bg = "white", base_height = 22, base_width = 14)
 
@@ -2274,7 +2270,7 @@ cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/suppl
 
 # Fig. 11 ##############################
 #downsampled_genus_df
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/downsampled_genus_df.RData")
+load("..//data/downsampled_genus_df.RData")
 fixed_colors_sick <- fixed_colors
 names(fixed_colors_sick) <- paste0(names(fixed_colors_sick), " healthy")
 # fixed_colors_sick <- c(fixed_colors_sick, `non-Industrialized SAM` = "#25ECA7FF", `Industrialized preterm` = "#4147ADFF")
@@ -2505,27 +2501,27 @@ fig_S11_combined <- cowplot::plot_grid(cowplot::plot_grid(mal_pred_age_sup, mal_
                                      ncol = 1, rel_heights = c(2, 0.2))
 
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/figure_S11_combined_supplement.png", 
+cowplot::save_plot("../figures/figure_S11_combined_supplement.png", 
                    fig_S11_combined, dpi = 900,
                    bg = "white", base_height = 9, base_width = 14)
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_S11_combined_supplement.pdf", 
+cowplot::save_plot("../figures/figure_S11_combined_supplement.pdf", 
                    fig_S11_combined, dpi = 900,
                    bg = "white", base_height = 9, base_width = 14)
 
 
 # Supplementary Tables #################################
 ## supplementary table 1: ###########################
-studies_mdat <- readODS::read_ods("/fast/AG_Forslund/rob/Documents/interesting_studies.ods", sheet = "complete_16S") %>%
+studies_mdat <- readODS::read_ods("../data/interesting_studies.ods", sheet = "complete_16S") %>%
   select(paper, author, year, region, access_16S, "16S_region", primers) %>%
   mutate(study = paste(tolower(author), year, sep = "_")) %>%
   filter(study %in% unique(meta_df$study))
 # get info for preterm/SAM infants:
 library(microbiome)
-ps_sub <- readRDS("/fast/AG_Forslund/rob/mm_index/study_data/subramanian_2014/phyloseq_subramanian_2014_malnurished.rds")
-ps_gehr <- readRDS("/fast/AG_Forslund/rob/mm_index/study_data/gehrig_2019/phyloseq_gehrig_2019_malnurished.rds")
-ps_gibson <- readRDS("/fast/AG_Forslund/rob/studies/16S/gibson_2016/dada2/phyloseq_gibson_2016.rds")
-ps_ryan <- readRDS("/fast/AG_Forslund/rob/studies/16S/ryan_2019/dada2/phyloseq_ryan_2019.rds")
-ps_kamdar <- readRDS("/fast/AG_Forslund/rob/studies/16S/kamdar_2020/dada2/phyloseq_kamdar_2020.rds")
+ps_sub <- readRDS("../data/phyloseq_subramanian_2014_malnurished.rds")
+ps_gehr <- readRDS("../data/phyloseq_gehrig_2019_malnurished.rds")
+ps_gibson <- readRDS("../data/phyloseq_gibson_2016.rds")
+ps_ryan <- readRDS("../data/phyloseq_ryan_2019.rds")
+ps_kamdar <- readRDS("../data/phyloseq_kamdar_2020.rds")
 sick_ps <- merge_phyloseq(ps_sub %>% aggregate_taxa(level = "genus"),
                           ps_gehr %>% aggregate_taxa(level = "genus"),
                           ps_gibson %>% aggregate_taxa(level = "genus"),
@@ -2544,7 +2540,7 @@ sick_meta_df <- sick_ps@sam_data %>% data.frame() %>%
             mean_red_count = mean(sample_sum),
             max_read_count = max(sample_sum),
             min_read_count = min(sample_sum))
-studies_mdat_sick <- readODS::read_ods("/fast/AG_Forslund/rob/Documents/interesting_studies.ods", sheet = "preterms_only") %>%
+studies_mdat_sick <- readODS::read_ods("../data/interesting_studies.ods", sheet = "preterms_only") %>%
   select(paper, author, year, region, access_16S, "16S_region", primers) %>%
   mutate(study = paste(tolower(author), year, sep = "_")) %>%
   filter(study %in% unique(sick_meta_df$study))
@@ -2572,7 +2568,7 @@ suppl_table_1 <- meta_df %>%
   bind_rows(sick_combined)
 
 write.csv(suppl_table_1,
-          "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/supplementary_tables/supplementary_table_S1.csv")
+          "../data/supplementary_table_S1.csv")
 
 ## supplementary table 2 ####################
 suppl_table_2 <- lifestyle_lm_list_genus %>%
@@ -2581,7 +2577,7 @@ suppl_table_2 <- lifestyle_lm_list_genus %>%
             by = c("study", "lifestyle")) %>%
   mutate(age_range = max_age - min_age)
 write.csv(lifestyle_lm_list_genus, 
-          "/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/supplementary_tables/supplementary_table_S2.csv")
+          "../data/supplementary_table_S2.csv")
 
 
 ## supplementary table 3 ####################################
@@ -2605,4 +2601,4 @@ shap_cors_all %>% mutate(taxon = display_taxon_filter,
   left_join(shap_cors_filt_xy_plot %>% mutate(taxon = display_taxon_filter,
                                               .keep = "unused") %>%
               select(taxon, Classification)) %>% 
-  write.csv("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/supplement/supplementary_tables/supplementary_table_S3.csv")
+  write.csv("../data/supplementary_table_S3.csv")

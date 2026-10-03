@@ -1,6 +1,5 @@
 # merge all data for all studies
 
-setwd("/fast/AG_Forslund/rob/mm_index/publication_R_scripts/R")
 library(tidyverse)
 library(DECIPHER)
 library(pheatmap)

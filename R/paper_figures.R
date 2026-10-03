@@ -20,15 +20,14 @@ library(ggdist)
 library(maps)
 
 
-setwd("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures")
 # define global colors for lifestyle:
 fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", Combined = "#BC85A9")
 
 # Figure 1: Methods ############################################################
 ## studies map #####################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.RData")
+load("../data/a_div_genus_present.RData")
 
-hdi_data <- read.table("/fast/AG_Forslund/rob/mm_index/R_scripts/hdi_data.txt",
+hdi_data <- read.table("../data/hdi_data.txt",
                        sep = "\t", col.names = c("region", "hdi")) 
 world_coordinates <- map_data("world")
 world_coordinates <- world_coordinates %>% filter(!(region %in% c("Antarctica", "South Sandwich Islands", "Fiji")))
@@ -80,11 +79,11 @@ df_16S <- meta_df %>%
           legend.background = element_blank(),
           legend.title = element_text(size=15),
           legend.text = element_text(size=15)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/16S_study_locations_ls.png",
+ggsave("../figures/16S_study_locations_ls.png",
        width = 19.2, height = 12.8, units = "cm", plot = map_16S)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/16S_study_locations_ls.svg",
+ggsave("../figures/16S_study_locations_ls.svg",
        width = 19.2, height = 12.8, units = "cm", plot = map_16S)
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/16S_study_locations_ls.pdf",
+ggsave("../figures/16S_study_locations_ls.pdf",
        width = 19.2, height = 12.8, units = "cm", plot = map_16S)
 
 # Figure 2 #####################################################################
@@ -132,8 +131,6 @@ linetypes_1 <- c("No Raman" = "88")
                                    margins = "x",             
                                    groupFill = TRUE,
                                   size = 5))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_present.png",
-       width = 11, height = 6, plot = a_div_s_genus_hist)
 
 ## B: Alpha div difference #############################
 (a_div_diff <- bind_rows(alpha_div_sliding_window, alpha_div_sliding_window_no_raman) %>%
@@ -180,7 +177,7 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/a_div_genus_prese
 
 
 ## C: Beta div ##############
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/all_pcoa_genus_combined.RData")
+load("../large_files/all_pcoa_genus_combined.RData")
 
 explained_var <- ((pcoa_aitch_genus_1$sdev^2/sum(pcoa_aitch_genus_1$sdev^2)) * 100) %>%
   round(.,digits = 1)
@@ -259,8 +256,6 @@ plot_pcoa_data %>% select(PC1, PC2, PC3, PC4, sample_sum, age, lifestyle, shanno
 pcoa_age_ls_combined <- grid.arrange(pcoa_lifestyle, pcoa_age,
                       layout_matrix = rbind(c(1, 1, 2, 2, 2)))
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/all_pcoa_genus_combined.png",
-       width = 14, height = 7, plot = pcoa_age_ls_combined)
 ## combined Figure 1:
 legend_age <- get_legend(pcoa_age)
 legend_ls <- get_legend(a_div_s_genus)
@@ -289,16 +284,16 @@ legends <- cowplot::plot_grid(legend_ls, legend_age, nrow = 1)
                                       legends,
                                      rel_heights = c(0.9, 0.1, 1, 0.15), ncol = 1))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_2_combined.png", 
+cowplot::save_plot("../figures/figure_2_combined.png", 
                    fig_2_combined,dpi = 900,
                    bg = "white", base_height = 14, base_width = 14)
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_2_combined.pdf", 
+cowplot::save_plot("../figures/figure_2_combined.pdf", 
                    fig_2_combined,dpi = 900,
                    bg = "white", base_height = 14, base_width = 14)
 
 # Figure 3 #####################################################################
 ## A: Predicted vs true Age ######################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/genus_nested_cv_no_ls.RData")
+load("../data/all_nested_cv_genus_no_ls.RData")
 
 genus_no_ls_nested_cv_preds_noraman <- genus_no_ls_nested_cv_preds %>%
   mutate(Lifestyle = ifelse(lifestyle == "industrialized",
@@ -397,8 +392,6 @@ plot_data_no_raman <- genus_no_ls_nested_cv_preds %>%
           legend.position = c(0.7, 0.15),
           legend.text = element_text(size = 15),
           legend.title = element_text(size = 15)))
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/genus_nested_cv_no_ls_point_present.png", 
-       width = 10, plot = age_prediction_dotplot)
 
 (age_prediction_dotplot_hist <- ggMarginal(age_prediction_dotplot,
                                   type = "density",      
@@ -407,7 +400,7 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/genus_nested_cv_n
 
 
 ## B: Lifestyle performance #######################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfomance_genus.RData")
+load("../data/lifestyle_perfomance_genus.RData")
 
 
 lifestyle_lm_list_genus <- lifestyle_lm_list_genus %>%
@@ -476,9 +469,6 @@ library(ggbeeswarm)
           legend.text = element_text(size = 15),
           legend.title = element_text(size = 15)))
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfomance_genus.png", 
-       width = 10, plot = ls_performance)
-
 (fig_3_combined <- cowplot::plot_grid(age_prediction_dotplot_hist,
                                      ls_performance,
                                      nrow = 1,
@@ -486,18 +476,18 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/lifestyle_perfoma
                                      label_size = 18,
                                      label_fontface = "plain"))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_3_combined.png", 
+cowplot::save_plot("../figures/figure_3_combined.png", 
                    fig_3_combined, dpi = 900,
                    bg = "white", base_height = 7.6, base_width = 14)
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_3_combined.pdf", 
+cowplot::save_plot("../figures/figure_3_combined.pdf", 
                    fig_3_combined, dpi = 900,
                    bg = "white", base_height = 7.6, base_width = 14)
 
 
 # Figure 4 ####################################################################
 
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/imp_shap_prev.RData")
+load("../large_files/imp_shap_prev.RData")
 # select interesting Taxa:
 interesting_taxa <- combined_importance_prev_lifestyles_genus %>%
   filter(!is.na(importance)) %>%
@@ -724,11 +714,11 @@ fig_4_combined <- cowplot::plot_grid(cowplot::plot_grid(imp_prev_combined_plot,
                                      nrow = 2,
                                      rel_heights = c(1, 0.13))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_4_combined.png", 
+cowplot::save_plot("../figures/figure_4_combined.png", 
                    fig_4_combined, dpi = 900,
                    bg = "white", base_height = 9, base_width = 14)
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_4_combined.pdf", 
+cowplot::save_plot("../figures/figure_4_combined.pdf", 
                    fig_4_combined, dpi = 900,
                    bg = "white", base_height = 9, base_width = 14)
 
@@ -858,13 +848,10 @@ diff_shap_cors <- ggExtra:::addTopMargPlot(diff_shap_cors, top = single_ls_indus
 diff_shap_cors <- ggExtra:::addRightMargPlot(diff_shap_cors, right = single_ls_non_industrialized, size = 10)
 class(diff_shap_cors) <- c("ggExtraPlot", class(diff_shap_cors))
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/diff_shap_cors_lifestyle.png", 
-       width = 10, plot = diff_shap_cors)
-
 
 
 ## Prevalences ########################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/prevalences.RData")
+load("../data/prevalences.RData")
 
 selected_taxa <- c(selected_taxa) # Bacteroides "Atopobium", "Clostridium.sensu.stricto.1", "Collinsella"
 
@@ -912,9 +899,6 @@ shap_vals_combined %>%
           strip.text = element_text(size = 14, face = "italic"),
           strip.background = element_blank()))
 
-ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/selected_prevalences.png", 
-       width = 10, plot = prevalence_plot)
-
 
 (fig_5_combined <- cowplot::plot_grid(
   ggdraw(diff_shap_cors), 
@@ -925,16 +909,16 @@ ggsave("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/selected_prevalen
   label_fontface = "plain",
   rel_widths = c(2, 1)))
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_5_combined.png", 
+cowplot::save_plot("../figures/figure_5_combined.png", 
                    fig_5_combined, dpi = 900,
                    bg = "white", base_height = 8.15, base_width = 14)
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_5_combined.pdf", 
+cowplot::save_plot("../figures/figure_5_combined.pdf", 
                    fig_5_combined, dpi = 900,
                    bg = "white", base_height = 8.15, base_width = 14)
 
 
 # Figure 6 ###########################################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/sick_age_predictions.RData")
+load("../data/sick_age_predictions.RData")
 fixed_colors <- c(Industrialized = "#737125", `non-Industrialized` = "#1A97C8", Combined = "#2A2359")
 fixed_colors_sick <- fixed_colors
 names(fixed_colors_sick) <- paste0(names(fixed_colors_sick), " healthy")
@@ -1122,7 +1106,7 @@ pvals_maz_preterm <- all_preds_combined_preterm %>%
           legend.title = element_text(size = 15)))
 
 ## E: Malnurished SHAP ###############################
-load("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/sick_shap_data.RData")
+load("../large_files/sick_shap_data.RData")
 pvals_svz_mal_age <- shap_mdat_mal %>%
   mutate(age_bin = floor(ceiling(age) / 30)) %>%
   group_by(display_taxon, age_bin) %>%
@@ -1284,9 +1268,9 @@ fig_6_combined <- cowplot::plot_grid(cowplot::plot_grid(mal_pred_age, mal_maz_di
                                      ncol = 1, rel_heights = c(2, 0.2, 0.1, 1.2))
 
 
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_6_combined.png", 
+cowplot::save_plot("../figures/figure_6_combined.png", 
                    fig_6_combined, dpi = 900,
                    bg = "white", base_height = 11.5, base_width = 14)
-cowplot::save_plot("/fast/AG_Forslund/rob/mm_index/R_scripts/paper_figures/figure_6_combined.pdf", 
+cowplot::save_plot("../figures/figure_6_combined.pdf", 
                    fig_6_combined, dpi = 900,
                    bg = "white", base_height = 11.5, base_width = 14)

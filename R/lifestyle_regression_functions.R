@@ -88,9 +88,9 @@ run_in_bins <- function(ps_obj, cutoffs, prefix) {
 
 # read feature importances
 get_feature_importance <- function(study, lst = "nonindustrialized") {
-  train_object <- readRDS(paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+  train_object <- readRDS(paste0("../data/nested_cv_dataset_models/",
                                  "genus_data_", lst, "_", study, ".rds"))
-  boruta_object <- readRDS(paste0("/fast/AG_Forslund/rob/mm_index/R_scripts/regression_models/data/nested_cv_dataset_models/",
+  boruta_object <- readRDS(paste0("../data/nested_cv_dataset_models/",
                                   "genus_data_", lst, "_", study, "_boruta_res.rds"))
   imp_ftrs <- boruta_object$finalDecision %>% grep("Confirmed", value = T,.) %>% names
   # get, filter and normalize importances

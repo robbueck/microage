@@ -1,5 +1,4 @@
 # create model on industrialized or non-industrialized studies and predict age in the respective other set of studies
-setwd("/fast/AG_Forslund/rob/mm_index/publication_R_scripts/R/")
 library(caret)
 library(caretEnsemble)
 library(tidyverse)
@@ -448,9 +447,9 @@ if(shap_step){
                                      features = unique(combined_importance_prev_lifestyles_genus$taxon))
   print("done shap non industrialized")
   save(shap_model_industrialized, shap_model_noindustrialized,
-       file = "../data/lifestyle_shap_data.RData")
+       file = "../large_files/lifestyle_shap_data.RData")
 } else {
-  load("../data/lifestyle_shap_data.RData")
+  load("../large_files/lifestyle_shap_data.RData")
 }
 
 ## shap vs abundances #################
@@ -540,6 +539,9 @@ ggplot(ks_res_all, aes(x = D_ks, color = comparison)) +
   geom_density() +
   theme_classic()
 
+save(ks_res_all, file = "../data/ks_test_res.RData")
+
+
 # combine shap and feature importance:
 shap_and_imps <- bind_rows(combined_importance_prev_lifestyles_genus %>% mutate(type = "importance"),
                            shap_cors %>% mutate(type = "shap") %>% filter(!is.na(R2))) %>%
@@ -549,9 +551,9 @@ facet_labels <- shap_and_imps %>%
   pull(model) %>%
   setNames(., .)  # Keep only the `model` as the facet label
 
-save(combined_importance_prev_lifestyles_genus, shap_cors, short_taxa_names, 
+save(combined_importance_prev_lifestyles_genus, shap_cors, short_taxa_names,
      shap_model_industrialized, shap_model_noindustrialized,
-     file = "../data/imp_shap_prev.RData")
+     file = "../large_files/imp_shap_prev.RData")
 
 
 
