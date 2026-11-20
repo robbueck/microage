@@ -23,7 +23,7 @@ load("../data/final_no_ls_genus.RData") # change here to load different models
 
 # Formatting input data from a phyloseq object
 filtered_cdf <- create_caret_df(ps_filtered, transformation = "compositional", only_multiple_samples = F,
-                filter_features = names(final_model_genus$finalModel$variable.importance),
+                filter_features = names(final_model_genus_industrialized$finalModel$variable.importance),
                 additional_cols = c("Observed", "Shannon"))
 
 # predict microbiome age
@@ -31,13 +31,15 @@ predicted_age = predict(final_model_genus_no_ls$rf1, newdata = filtered_cdf$feat
 ```
 ## Get SHAP values for new data
 ```
-shap_res_combined <- get_shap_long(final_model_genus_no_ls$rf1,
+shap_res_combined <- get_shap_long(final_model_genus_industrialized$rf1,
                                    test_data = filtered_cdf$features
-                                   features = intersect(colnames(filtered_cdf_combined_sub$features), names(final_model_genus$finalModel$variable.importance)),
+                                   features = intersect(colnames(filtered_cdf$features),
+                                                        names(final_model_genus_industrialized$finalModel$variable.importance)),
                                    normalize_ab_values = F)
 
 ```
 
 # Comments
 I didn't upload all models, further models can either be trained with `all_regression_nested_cv.R`, or contact me, then I can share them
-Some intermediate files are too large to be uploaded here, but can be shared on request
+Some intermediate files are too large to be uploaded here, but can be shared on request.
+I will set up a zenodo repository in the next weeks to share all other models.
