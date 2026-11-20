@@ -250,20 +250,6 @@ names(studies) <- studies
 get_gamlss_res <- function(dt, st) {
   print(st)
   dt = dt %>% filter(study != st) %>% select(rf1, age, lifestyle_industrialized, study)
-  # f_model <- gamlss(rf1 ~ pb(age) + lifestyle_industrialized + random(study),
-  #                   data = dt,
-  #                   trace = F)
-  # non_lin_age_model <- gamlss(rf1 ~ age + lifestyle_industrialized + random(study),
-  #                             data = dt,
-  #                             trace = F)
-  # ls_model <- gamlss(rf1 ~ pb(age)  + random(study),
-  #                    data = dt,
-  #                    trace = F)
-  # age_model <- gamlss(rf1 ~ lifestyle_industrialized  + random(study),
-  #                     data = dt,
-  #                     trace = F)
-  # lr_test_res_age <- LR.test(age_model, f_model, print = F)
-  # lr_test_res_age_non_lin <- LR.test(non_lin_age_model, f_model, print = F)
   f_model <- lmer(rank(rf1) ~ age + lifestyle_industrialized + (1|study),
                     data = dt)
   ls_model <- lmer(rank(rf1) ~ age  + (1|study),
@@ -297,11 +283,6 @@ get_gamlss_res <- function(dt, st) {
               exp_var_ls_lin = 1 - deviance(linear_fm) / deviance(linear_intm),
               intercept_lin = summary(linear_fm)$coefficients[3,1]))
 }
-# rest_test <- mclapply(c(complete = "complete", studies),
-#                       function(x) get_gamlss_res(dt = genus_no_ls_nested_cv_preds, st = x))
-# rest_test_df <- do.call(rbind, lapply(rest_test, as.data.frame)) %>%
-#   as.data.frame()
-
 
 ### effect of delivery mode:
 bm_data <- genus_no_ls_nested_cv_preds %>% 
