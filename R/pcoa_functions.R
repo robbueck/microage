@@ -2,6 +2,15 @@
 ##Aim: General functions for the scripts
 ##Author: Robert Bücking
 
+subsample_fn <- function(n_cat, df, cat = "study") {
+  stds <- sample(unique(df[[cat]]), n_cat)
+  df %>% filter(.data[[cat]] %in% stds) %>%
+    select(-cat) %>% 
+    colSums(. > 10) %>% 
+    `>`(1) %>%
+    sum()
+}
+
 
 # fix merge_taxa2 naming
 merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")

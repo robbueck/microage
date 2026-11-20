@@ -22,37 +22,6 @@ library(dplyr)
 source("./dada_2_functions.R")
 source("./setlists.R")
 
-add_asv_alpha_div <- function(ps_object) {
-  ps_object <- subset_taxa(ps_object, genus != "Mitochondria")
-  if(min(sample_sums(ps_object)) < 2000) {
-    ps_low_counts <- ps_object %>% prune_samples(samples = (sample_sums(.) < 2000))
-    ps_raref <- ps_object %>% rarefy_even_depth(., sample.size = 2000) %>%
-      merge_phyloseq(.,ps_low_counts)
-  } else {
-    ps_raref <- ps_object %>% rarefy_even_depth(., sample.size = 2000)
-  }
-  matching_taxa <- ps_raref@tax_table %>% data.frame() %>% filter(grepl("unclassified", genus)) %>% rownames()
-  raref_otu_table <- ps_raref@otu_table %>% data.frame()
-  unassigned_taxa_present_per_sample_raref <- apply(raref_otu_table[,matching_taxa], 1, function(x) sum(x > 0))
-  ps_raref@sam_data$n_unassigned_asvs_sample_raref <- unassigned_taxa_present_per_sample_raref
-  alpha.div_gen <- microbiome::alpha(ps_raref, index = c("Observed", "Shannon"))
-  ps_raref@sam_data$shannon_asv <- alpha.div_gen$diversity_shannon
-  ps_raref@sam_data$richness_asv <- alpha.div_gen$observed
-  mdat_raref <- ps_raref@sam_data %>% data.frame() %>% select(shannon_asv, richness_asv, 
-                                                              n_unassigned_asvs_sample_raref,
-                                                              run_accession)
-  ps_object@sam_data <- ps_object@sam_data %>% data.frame() %>%
-    mutate(shannon_asv = NULL,
-           richness_asv = NULL, 
-           n_unassigned_asvs_sample_raref = NULL) %>%
-    left_join(., mdat_raref, by = "run_accession") %>%
-    mutate(rownames_1 = run_accession) %>%
-    column_to_rownames("rownames_1") %>%
-    sample_data()
-  return(ps_object)
-}
-
-
 merged_set <- "all"
 
 merging_step <- F

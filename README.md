@@ -40,7 +40,7 @@ shap_res_combined <- get_shap_long(final_model_genus_industrialized$rf1,
 ```
 
 # Comments
-The industrialized and the non-industrialized models are in `data/final_industrialized_genus.RData` and `/datafinal_nonindustrialized_genus.RData`
+The industrialized and the non-industrialized models are in `data/final_industrialized_genus.RData` and `data/final_nonindustrialized_genus.RData`
 I didn't upload all models, further models can either be trained with `all_regression_nested_cv.R`, or contact me, then I can share them
 Some intermediate files are too large to be uploaded here, but can be shared on request.
 I will set up a zenodo repository in the next weeks to also share the combined and a preterm specific model.
