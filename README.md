@@ -2,15 +2,15 @@
 Scripts for the publication Global analysis of infant gut microbiota revealed distinctive maturation dynamics across lifestyles
 
 ## File description:
-examples for dada2-scripts for studies consisting of one cohort: `dada_2_single_cohort.R` or multiple cohorts: `dada_2_multiple_cohorts.R`, both require `dada_2_functions.R`
-aggregate all studies and perform rarefaction filtering with `merge_all_simple.R`
-alpha and beta diversity analysis, prevalence analyses done with `pcoas.R`, requires `pcoa_functions.R`
-main models are trained with: `all_regression_nested_cv.R`
-cross-application of lifestyle specific models with: `lifestyle_regression.R`, requires `lifestyle_regression_functions.R`
-training models on downsampled lifestyle groups with matching age distributions with: `lifestyle_regression_downsample.R`         
-all analyses including SAM and preterm infants done with: `sick_children.R`
-all random forest scripts need `regression_functions.R` and `alt_models.R` (a modified version of ranger for caret to vary selected hyperparameters)
-scripts for generating all figures in the paper: `paper_figures.R` and `paper_supplement_figures.R`
+- examples for dada2-scripts for studies consisting of one cohort: `dada_2_single_cohort.R` or multiple cohorts: `dada_2_multiple_cohorts.R`, both require `dada_2_functions.R`
+- aggregate all studies and perform rarefaction filtering with `merge_all_simple.R`
+- alpha and beta diversity analysis, prevalence analyses done with `pcoas.R`, requires `pcoa_functions.R`
+- main models are trained with: `all_regression_nested_cv.R`
+- cross-application of lifestyle specific models with: `lifestyle_regression.R`, requires `lifestyle_regression_functions.R`
+- training models on downsampled lifestyle groups with matching age distributions with: `lifestyle_regression_downsample.R`         
+- all analyses including SAM and preterm infants done with: `sick_children.R`
+- all random forest scripts need `regression_functions.R` and `alt_models.R` (a modified version of ranger for caret to vary selected hyperparameters)
+- scripts for generating all figures in the paper: `paper_figures.R` and `paper_supplement_figures.R`
 
 
 ## Application of age index
