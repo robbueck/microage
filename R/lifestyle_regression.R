@@ -1,4 +1,9 @@
-# create model on industrialized or non-industrialized studies and predict age in the respective other set of studies
+##Project: Microbiome age index
+##Aim: Run cross lifestyle predictions
+##Author: Robert Bücking
+
+# create model on industrialized or non-industrialized studies and predict age 
+# in the respective other set of studies
 library(caret)
 library(caretEnsemble)
 library(tidyverse)

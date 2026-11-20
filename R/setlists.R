@@ -1,3 +1,7 @@
+##Project: Microbiome age index
+##Aim: Setlists for different sub-analyses
+##Author: Robert Bücking
+
 set_list <- list(all = c("reyman_2019", "stokholm_2018", "gehrig_2019", 
                          "kristensen_2020", "bockulich_2016", "raman_2019", "blanton_2016",
                          "vatanen_2018", "roswall_2021", "hill_2017", "sprockett_2020",

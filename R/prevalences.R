@@ -1,3 +1,7 @@
+##Project: Microbiome age index
+##Aim: Prevalence analyses
+##Author: Robert Bücking
+
 library(phyloseq)
 library(tidyverse)
 library(ggplot2)

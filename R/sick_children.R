@@ -1,4 +1,7 @@
-rm(list = ls())
+##Project: Microbiome age index
+##Aim: Run models on preterms/SAM-infants
+##Author: Robert Bücking
+
 library(tidyverse)
 library(ggplot2)
 library(caret)
@@ -294,6 +297,7 @@ mdat_malnurished_pca %>%
   ylab(paste0("PC 2 (", explained_var_mal[2], "%)")) +
   # scale_color_manual(values = fixed_colors) +
   guides(color = guide_legend(override.aes = list(size = 3, alpha = 1)))
+
 ## GAMs ###########################
 plan(multisession, workers = 5)  # You can change 'workers' to any number of cores you want to use
 
@@ -304,10 +308,6 @@ run_gamlss_tests <- function(data, var_name, filter_criteria, trace = F, outcome
   filtered_data <- data %>%
     filter(!!rlang::parse_expr(filter_criteria)) %>%
     select(outcome, age, !!sym(var_name), study)
-  # print("model formulars are:")
-  # print(formula_full)
-  # print(formula_traj)
-  # print(formula_intercept)
   # Fit the models
   full_model <- gamlss(formula_full,
                        data = filtered_data)

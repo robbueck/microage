@@ -1,4 +1,7 @@
-# functions to run the regression scripts
+##Project: Microbiome age index
+##Aim: functions to run the regression scripts
+##Author: Robert Bücking
+
 library(caret)
 library(rsample)
 library(tidyverse)

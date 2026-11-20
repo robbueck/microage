@@ -1,3 +1,7 @@
+##Project: Microbiome age index
+##Aim: Create supplementary figures for paper
+##Author: Robert Bücking
+
 library(ggplot2)
 library(tidyverse)
 library(viridis)

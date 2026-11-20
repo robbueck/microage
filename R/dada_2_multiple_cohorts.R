@@ -1,4 +1,7 @@
-rm(list = ls())
+##Project: Microbiome age index
+##Aim: Example for a dada2 run for a study with multiple cohorts
+##Author: Robert Bücking
+
 maindir <- "/fast/AG_Forslund/rob/studies/16S/vatanen_2018"
 setwd(maindir)
 library(dada2)

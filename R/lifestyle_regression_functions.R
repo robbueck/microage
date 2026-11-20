@@ -1,3 +1,7 @@
+##Project: Microbiome age index
+##Aim: functions for cross-lifestyle predictions
+##Author: Robert Bücking
+
 library(Boruta)
 
 

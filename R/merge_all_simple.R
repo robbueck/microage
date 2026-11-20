@@ -1,4 +1,7 @@
-# merge all data for all studies
+##Project: Microbiome age index
+##Aim: Merge all data for all studies
+##Author: Robert Bücking
+
 
 library(tidyverse)
 library(DECIPHER)

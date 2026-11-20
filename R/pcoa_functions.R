@@ -1,3 +1,8 @@
+##Project: Microbiome age index
+##Aim: General functions for the scripts
+##Author: Robert Bücking
+
+
 # fix merge_taxa2 naming
 merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
 {

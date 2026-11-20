@@ -1,3 +1,7 @@
+##Project: Microbiome age index
+##Aim: Train age prediction models
+##Author: Robert Bücking
+
 library(caret)
 library(caretEnsemble)
 library(tidyverse)

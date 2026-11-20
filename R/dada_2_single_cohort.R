@@ -1,5 +1,7 @@
-rm(list = ls())
-maindir <- "/fast/AG_Forslund/rob/studies/16S/wampach_2018"
+##Project: Microbiome age index
+##Aim: Example for a dada2 run
+##Author: Robert Bücking
+
 setwd(maindir)
 library(dada2)
 library("reshape2")

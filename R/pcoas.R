@@ -1,5 +1,7 @@
-# plot PCoAs
-version
+##Project: Microbiome age index
+##Aim: MePlot PCoAs
+##Author: Robert Bücking
+
 library(tidyverse)
 library(phyloseq)
 library(microbiome)

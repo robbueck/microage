@@ -1,4 +1,6 @@
-# dada2 additional functions
+##Project: Microbiome age index
+##Aim: Additional functions for dada2 scripts
+##Author: Robert Bücking
 
 library(ape)
 library(btools)

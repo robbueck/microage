@@ -1,3 +1,8 @@
+##Project: Microbiome age index
+##Aim: Custom version of ranger for caret
+##Author: Robert Bücking
+
+
 # alternative models:
 
 # adapt random forest model to be trained over different parameters:
