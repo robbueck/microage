@@ -129,14 +129,6 @@ meta_df <- left_join(meta_df, alpha.div_gen, by = c("run_accession" = "rowname")
 ## study, individual, sample rarefaction ##############
 # studies
 print("study rarefaction")
-subsample_fn <- function(n_cat, df, cat = "study") {
-  stds <- sample(unique(df[[cat]]), n_cat)
-  df %>% filter(.data[[cat]] %in% stds) %>%
-    select(-cat) %>% 
-    colSums(. > 10) %>% 
-    `>`(1) %>%
-    sum()
-}
 
 mdat_all <- data.frame(ps_object_genus_raref@sam_data) %>%
   select(run_accession, lifestyle, study, subject_ID, sample_ID, age, sample_sum) %>%

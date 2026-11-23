@@ -1,5 +1,5 @@
 # microage
-Scripts for the publication Global analysis of infant gut microbiota revealed distinctive maturation dynamics across lifestyles
+Scripts for the publication Global analysis of infant gut microbiota revealed distinctive maturation dynamics across lifestyles (https://doi.org/10.1038/s41522-026-01130-4)
 
 ## File description:
 - examples for dada2-scripts for studies consisting of one cohort: `dada_2_single_cohort.R` or multiple cohorts: `dada_2_multiple_cohorts.R`, both require `dada_2_functions.R`
@@ -16,18 +16,30 @@ Scripts for the publication Global analysis of infant gut microbiota revealed di
 ## Application of age index
 Generate count table following the example dada2-Rscript using the SILVA database version 138
 
+### Useful files in data/:
+- industrialized model: `final_industrialized_genus.RData`
+- non-industrialized model: `final_nonindustrialized_genus.RData`
+- training data (also works as input data example): `all_phyloseq_raw_genus.rds`
+
+Model predictions:
+- combined model predictions (predicted age in column rf1): `all_nested_cv_genus_no_ls.RData`
+- predictions from industrialized model on industrialized data: `all_nested_cv_genus_industrialized.RData`
+- predictions from non-industrialized model on non-industrialized data: `all_nested_cv_genus_nonindustrialized.RData`
+- Cross lifestyle predictions: `inter_lifestyle_pred_genus.RData`
+
 ```
 # load functions and model
 source(regression_functions.R)
-load("../data/final_no_ls_genus.RData") # change here to load different models
+ps_all <- readRDS("../data/all_phyloseq_raw_genus.rds") # example taxonomic input profile
+load("../data/final_industrialized_genus.RData") # change here to load different models
 
 # Formatting input data from a phyloseq object
-filtered_cdf <- create_caret_df(ps_filtered, transformation = "compositional", only_multiple_samples = F,
+filtered_cdf <- create_caret_df(ps_all, transformation = "compositional", only_multiple_samples = F,
                 filter_features = names(final_model_genus_industrialized$finalModel$variable.importance),
                 additional_cols = c("Observed", "Shannon"))
 
 # predict microbiome age
-predicted_age = predict(final_model_genus_no_ls$rf1, newdata = filtered_cdf$features)
+predicted_age = predict(final_model_genus_industrialized$rf1, newdata = filtered_cdf$features)
 ```
 ## Get SHAP values for new data
 ```
@@ -40,7 +52,7 @@ shap_res_combined <- get_shap_long(final_model_genus_industrialized$rf1,
 ```
 
 # Comments
-The industrialized and the non-industrialized models are in `data/final_industrialized_genus.RData` and `data/final_nonindustrialized_genus.RData`
-I didn't upload all models, further models can either be trained with `all_regression_nested_cv.R`, or contact me, then I can share them
-Some intermediate files are too large to be uploaded here, but can be shared on request.
-I will set up a zenodo repository in the next weeks to also share the combined and a preterm specific model.
+- I didn't upload all models, further models can either be trained with `all_regression_nested_cv.R`, or contact me, then I can share them
+- I will set up a zenodo repository in the next weeks to also share the combined and a preterm specific model.
+- Some intermediate files are too large to be uploaded here, but can be shared on request.
+- Work in progress: models for updated SILVA taxonomy and shotgun data processed by metaphlan/motus.

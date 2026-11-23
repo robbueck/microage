@@ -152,6 +152,7 @@ library(DECIPHER)
 print("assign taxonomy")
 dna <- DNAStringSet(getSequences(st.all.nochim)) # Create a DNAStringSet from the ASVs
 if(id_taxa_step) {
+  # download your database form here: https://decipher.codes/Downloads.html
   load("/fast/AG_Forslund/rob/references/silva/SILVA_SSU_r138_2019.RData") # CHANGE TO THE PATH OF YOUR TRAINING SET
   ids <- IdTaxa(dna, trainingSet, processors=10, verbose=FALSE)
   saveRDS(ids, "dada2/taxa_ids.rds")
