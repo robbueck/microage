@@ -14,7 +14,8 @@ Scripts for the publication Global analysis of infant gut microbiota revealed di
 
 
 ## Application of age index
-Generate count table following the example dada2-Rscript using the SILVA database version 138
+Generate count table following the example dada2-Rscript using the SILVA database version 138.
+Using another processing pipeline like LotuS should work as well, but might introduce some bias.
 
 ### Useful files in data/:
 - industrialized model: `final_industrialized_genus.RData`
@@ -55,4 +56,4 @@ shap_res_combined <- get_shap_long(final_model_genus_industrialized$rf1,
 - I didn't upload all models, further models can either be trained with `all_regression_nested_cv.R`, or contact me, then I can share them
 - I will set up a zenodo repository in the next weeks to also share the combined and a preterm specific model.
 - Some intermediate files are too large to be uploaded here, but can be shared on request.
-- Work in progress: models for updated SILVA taxonomy and shotgun data processed by metaphlan/motus.
+- Work in progress: models for updated SILVA taxonomy v144 and shotgun data processed by metaphlan/motus.

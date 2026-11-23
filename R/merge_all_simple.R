@@ -71,6 +71,8 @@ options(future.globals.maxSize = 25000 * 1024^2)
 start_time <- Sys.time()
 print(names(ps_list_names)) %>% sort
 
+# only perform a simple merge based on genus annotation.
+# to perform a merging based on clustering ASVs from different sources, see ?merge_multiple_clusters
 if(merging_step){
   ps_list_genus <- lapply(ps_list_names, function(x) subset_taxa(x, genus != "Mitochondria") %>% aggregate_taxa(., level = "genus"))
   ps_list_family <- lapply(ps_list_names, function(x) subset_taxa(x, genus != "Mitochondria") %>% aggregate_taxa(., level = "family"))

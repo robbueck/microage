@@ -4,16 +4,70 @@
 
 library(ape)
 library(btools)
-library(rBLAST)
+# library(rBLAST)
 
-add_asv_alpha_div <- function(ps_object) {
+#' Add rarefied ASV-level alpha diversity to a phyloseq object
+#'
+#' Removes mitochondrial ASVs, rarefies the samples, and
+#' calculates ASV richness, Shannon diversity and the number of unclassified
+#' genera per sample. The results are added as new columns to the sample data
+#' of the original (non-rarefied) phyloseq object.
+#'
+#' @param ps_object A \code{phyloseq} object. The taxonomy table must contain
+#'   a rank called \code{genus} (lower case), the sample data must contain a
+#'   column \code{run_accession} with unique sample IDs, and the OTU table must
+#'   have taxa as columns (\code{taxa_are_rows = FALSE}).
+#' @param keep_low_counts \code{logical} Whether to keep samples below the
+#'  rarefaction threshold.
+#' @param rarefaction_depth \code{numeric} Read depths for rarefaction to 
+#'  calculate diversity indices.
+#'
+#' @details
+#' \itemize{
+#'   \item ASVs with \code{genus == "Mitochondria"} are removed before all
+#'     calculations. Note that \code{subset_taxa()} also drops ASVs whose genus
+#'     is \code{NA}.
+#'   \item Samples with at least 2000 reads are rarefied to 2000 reads with
+#'     \code{phyloseq::rarefy_even_depth()}. Samples with fewer reads are
+#'     \strong{not} rarefied; their diversity is calculated on the raw counts.
+#'   \item Rarefaction is random. Call \code{set.seed()} before this function
+#'     for reproducible results.
+#'   \item ASVs are counted as unclassified if their genus contains the string
+#'     \code{"unclassified"}.
+#'   \item Existing columns \code{shannon_asv}, \code{richness_asv} and
+#'     \code{n_unassigned_asvs_sample_raref} are overwritten.
+#' }
+#'
+#' @return The input \code{phyloseq} object (with mitochondrial ASVs removed)
+#'   with three additional sample data columns:
+#'   \describe{
+#'     \item{shannon_asv}{Shannon diversity of the rarefied ASV counts.}
+#'     \item{richness_asv}{Number of observed ASVs after rarefaction.}
+#'     \item{n_unassigned_asvs_sample_raref}{Number of ASVs with an
+#'       unclassified genus present in the rarefied sample.}
+#'   }
+#'
+#' @importFrom phyloseq subset_taxa sample_sums prune_samples
+#'   rarefy_even_depth merge_phyloseq sample_data
+#' @importFrom dplyr filter select mutate left_join %>%
+#' @importFrom tibble column_to_rownames
+#'
+#' @examples
+#' \dontrun{
+#' set.seed(42)
+#' ps <- add_asv_alpha_div(ps)
+#' head(phyloseq::sample_data(ps)[, c("shannon_asv", "richness_asv")])
+#' }
+#'
+#' @export
+add_asv_alpha_div <- function(ps_object, keep_low_counts = T, rarefaction_depth = 2000) {
   ps_object <- subset_taxa(ps_object, genus != "Mitochondria")
-  if(min(sample_sums(ps_object)) < 2000) {
-    ps_low_counts <- ps_object %>% prune_samples(samples = (sample_sums(.) < 2000))
-    ps_raref <- ps_object %>% rarefy_even_depth(., sample.size = 2000) %>%
+  if(min(sample_sums(ps_object)) < rarefaction_depth & keep_low_counts) {
+    ps_low_counts <- ps_object %>% prune_samples(samples = (sample_sums(.) < rarefaction_depth))
+    ps_raref <- ps_object %>% rarefy_even_depth(., sample.size = rarefaction_depth) %>%
       merge_phyloseq(.,ps_low_counts)
   } else {
-    ps_raref <- ps_object %>% rarefy_even_depth(., sample.size = 2000)
+    ps_raref <- ps_object %>% rarefy_even_depth(., sample.size = rarefaction_depth)
   }
   matching_taxa <- ps_raref@tax_table %>% data.frame() %>% filter(grepl("unclassified", genus)) %>% rownames()
   raref_otu_table <- ps_raref@otu_table %>% data.frame()
@@ -37,8 +91,6 @@ add_asv_alpha_div <- function(ps_object) {
 }
 
 
-
-
 get_n_cores <- function(nc){
   if(is.logical(nc)){
     if(nc) {
@@ -58,13 +110,49 @@ get_n_cores <- function(nc){
   return(nc)
 }
 
+
+#' Calculate loss ratio
+#'
+#' Calculates loss ratio for different filtering steps.
+#'
+#' @param reduced \code{integer} Number of reads after filtering step.
+#' @param total \code{integer} Number of reads before filtering step.
+#'
+#'
+#' @return Depending on the input either a single value or vector of loss ratios.
+#' @export
 loss_ratio <- function(reduced, total) {
   res <- (total - reduced)/total
   res[is.na(res)] <- 1
   return(res)
 }
 
-# plot average quality scores for each cluster
+#' Plot mean quality scores per position for a read cluster
+#'
+#' Calculates the mean and standard deviation of the quality scores at each
+#' read position and plots them as a line with error bars.
+#'
+#' @param cluster_matrix A numeric matrix of quality scores, with one row per
+#'   read and one column per position in the read.
+#'
+#' @details
+#' Error bars show the mean ± one standard deviation at each position. Missing
+#' values are not removed, so a position with any \code{NA} (e.g. from reads
+#' of different lengths) gets \code{NA} as its mean and is not plotted.
+#'
+#' @return A \code{ggplot} object with position on the x-axis and mean quality
+#'   score on the y-axis. It can be modified further with \code{+}, e.g. to
+#'   add labels or a theme.
+#'
+#' @importFrom ggplot2 ggplot aes geom_line geom_point geom_errorbar
+#'   position_dodge
+#' @importFrom matrixStats colSds
+#'
+#' @examples
+#' qual <- matrix(sample(20:40, 50 * 100, replace = TRUE), nrow = 50)
+#' plot_cluster_qual(qual)
+#'
+#' @export
 plot_cluster_qual <- function(cluster_matrix){
   quality_df <- data.frame(position = 1:ncol(cluster_matrix),
                            mean_qual = colMeans(cluster_matrix),
@@ -124,9 +212,57 @@ filtering_fastq <- function(sample_names, plotting = F, libname, trimLeft, trunc
 
 
 
-# perform the first filtering step and write the files, takes in a list of file prefixes
-# sinle end
-# default cores = availabe cores of SGE job
+#' Wrapper to filter and trim paired-end FASTQ files with dada2
+#'
+#' Checks that the decontaminated paired-end FASTQ files exist for all
+#' samples, filters and trims them with \code{dada2::filterAndTrim()}, and
+#' writes the filtered files. Quality profiles can optionally be plotted
+#' before and after filtering.
+#'
+#' @param sample_names Character vector of sample prefixes. Input files are
+#'   expected as \code{<prefix>_dec_1.fastq.gz} and
+#'   \code{<prefix>_dec_2.fastq.gz}.
+#' @param plotting Logical. If \code{TRUE}, quality profiles of the first two
+#'   samples are plotted before and after filtering. Default \code{FALSE}.
+#' @param libname Currently not used.
+#' @param trimLeft,truncLen,maxN,maxEE,truncQ Filtering parameters passed to
+#'   \code{\link[dada2]{filterAndTrim}}. Give two values (forward, reverse)
+#'   where dada2 allows it, e.g. \code{truncLen = c(240, 200)}.
+#' @param cores Passed to \code{multithread} in \code{filterAndTrim()}:
+#'   \code{TRUE} uses all available cores, a number sets the core count.
+#'   Default \code{TRUE}.
+#' @param verbose Logical, passed to \code{filterAndTrim()}. Default
+#'   \code{FALSE}.
+#'
+#' @details
+#' The function uses a global variable \code{maindir}, which must be defined
+#' before calling it. Files are read from and written to:
+#' \itemize{
+#'   \item Input: \code{<maindir>/fastq_files/decontaminated/}
+#'   \item Output: \code{<maindir>/fastq_files/filtered/}, as
+#'     \code{<prefix>_dec_filt_1.fastq.gz} and
+#'     \code{<prefix>_dec_filt_2.fastq.gz}
+#' }
+#' PhiX reads are removed (\code{rm.phix = TRUE}) and the output is
+#' compressed. The function stops with an error if any input file is missing,
+#' and warns if any output file is missing afterwards. dada2 does not write a
+#' file for a sample in which no reads pass the filter, so a missing output
+#' usually means that sample was filtered out completely.
+#'
+#' @return A matrix with one row per sample and the columns \code{reads.in}
+#'   and \code{reads.out}, as returned by \code{filterAndTrim()}.
+#'
+#' @importFrom dada2 filterAndTrim plotQualityProfile
+#'
+#' @examples
+#' \dontrun{
+#' maindir <- "/path/to/project"
+#' out <- filtering_fastq(c("sample1", "sample2"),
+#'                        trimLeft = c(10, 10), truncLen = c(240, 200),
+#'                        maxN = 0, maxEE = c(2, 2), truncQ = 2)
+#' }
+#'
+#' @export
 filtering_fastq_single <- function(sample_names, plotting = F, libname, trimLeft, truncLen,
                             maxN, maxEE, truncQ, cores = T) {
   cores = get_n_cores(cores)
@@ -213,9 +349,63 @@ error_and_asv <- function(sample_names, libname = "all", plotting = T, debug_mod
 }
 
 
-# learn error rates and infer sequence variants
-# single end
-# default cores = available cores for SGE job
+#' Wrapper to learn error rates and infer ASVs from filtered paired-end reads
+#'
+#' Runs the core dada2 workflow on filtered paired-end FASTQ files: learns
+#' error rates, infers sequence variants for forward and reverse reads,
+#' merges the read pairs and builds a sequence table.
+#'
+#' @param sample_names Character vector of sample prefixes. Input files are
+#'   expected as \code{<prefix>_dec_filt_1.fastq.gz} and
+#'   \code{<prefix>_dec_filt_2.fastq.gz}.
+#' @param libname Character. Library name used in the file names of saved
+#'   plots. Default \code{"all"}.
+#' @param plotting Logical. If \code{TRUE}, saves the forward error-rate plot
+#'   and the per-position quality of the first reverse sample as PDFs.
+#'   Default \code{TRUE}.
+#' @param debug_mode Logical. If \code{TRUE}, prints per sample the fraction
+#'   of denoised forward reads that were merged. Default \code{FALSE}.
+#' @param pool Pooling mode passed to \code{\link[dada2]{dada}}: \code{FALSE},
+#'   \code{TRUE} or \code{"pseudo"}. Default \code{"pseudo"}.
+#' @param nbases Minimum number of bases used to learn error rates, passed to
+#'   \code{\link[dada2]{learnErrors}}. One value is used for both directions;
+#'   two values set forward and reverse separately. Default \code{1e8}.
+#' @param remove_empty Logical. If \code{FALSE}, the function stops when any
+#'   filtered file is missing. If \code{TRUE}, missing files (e.g. samples
+#'   with no reads left after filtering) are skipped. Default \code{FALSE}.
+#' @param cores \code{TRUE}, \code{FALSE} or a number of cores; converted with
+#'   \code{\link{get_n_cores}}. Default \code{TRUE} (cores of the SGE job).
+#'
+#' @details
+#' The function uses a global variable \code{maindir}, which must be defined
+#' before calling it. Files are read from
+#' \code{<maindir>/fastq_files/filtered/}. With \code{plotting = TRUE}, plots
+#' are saved to \code{<maindir>/dada2/} (the folder must exist) as
+#' \code{<libname>_errors.pdf} and \code{lib_<libname>_seq_qual.pdf}.
+#'
+#' The function calls \code{set.seed(100)} before learning error rates. This
+#' makes results reproducible but also resets the random number generator
+#' in the calling session.
+#'
+#' @return A sequence table: an integer matrix with one row per sample and
+#'   one column per ASV (column names are the sequences), as returned by
+#'   \code{\link[dada2]{makeSequenceTable}}.
+#'
+#' @seealso \code{\link{filtering_fastq}} for the preceding filtering step,
+#'   \code{\link{plot_cluster_qual}}
+#'
+#' @importFrom dada2 learnErrors plotErrors dada mergePairs getUniques
+#'   makeSequenceTable
+#' @importFrom ggplot2 ggsave
+#'
+#' @examples
+#' \dontrun{
+#' maindir <- "/path/to/project"
+#' seqtab <- error_and_asv(c("sample1", "sample2"), libname = "run1",
+#'                         remove_empty = TRUE)
+#' }
+#'
+#' @export
 error_and_asv_single <- function(sample_names, libname = "all", plotting = T, 
                                  pool = "pseudo", nbases = 1e8, remove_empty = F,
                                  cores = T){
@@ -255,23 +445,51 @@ error_and_asv_single <- function(sample_names, libname = "all", plotting = T,
 
 
 
-# build tree
+#' Wrapper to build a neighbour-joining tree from ASV sequences
+#'
+#' Aligns the ASV sequences with DECIPHER, calculates maximum-likelihood
+#' distances, and builds a neighbour-joining tree, e.g. for adding to a
+#' phyloseq object for UniFrac distances or phylogenetic diversity.
+#'
+#' @param x An object containing ASV sequences that
+#'   \code{\link[dada2]{getSequences}} accepts, typically a sequence table
+#'   from \code{\link{error_and_asv}} or a character vector of sequences.
+#' @param cores Number of processors used for the alignment, passed to
+#'   \code{processors} in \code{\link[DECIPHER]{AlignSeqs}}. \code{NULL}
+#'   (default) uses all available cores.
+#'
+#' @details
+#' Distances are calculated with \code{phangorn::dist.ml()} using its default
+#' substitution model (JC69). The tree is built with \code{phangorn::NJ()}
+#' and is not optimised further. It is unrooted; for UniFrac, phyloseq picks
+#' a random root unless you root it yourself, e.g. with
+#' \code{phangorn::midpoint()}.
+#'
+#' Tip labels are the full ASV sequences, matching the column names of a
+#' dada2 sequence table. The order of the tips differs from the order of the
+#' input sequences. Alignment time grows quickly with the number of ASVs.
+#'
+#' @return An unrooted tree of class \code{phylo}.
+#'
+#' @seealso \code{\link{error_and_asv}}
+#'
+#' @importFrom dada2 getSequences
+#' @importFrom DECIPHER AlignSeqs
+#' @importFrom Biostrings DNAStringSet
+#' @importFrom methods as
+#'
+#' @examples
+#' \dontrun{
+#' tree <- build_tree(seqtab, cores = 8)
+#' ps <- phyloseq(otu_table(seqtab, taxa_are_rows = FALSE),
+#'                phy_tree(tree))
+#' }
+#'
+#' @export
 build_tree <- function(x, cores = NULL) {
   sequences <- getSequences(x)
   names(sequences)<-sequences
   alignment <- AlignSeqs(DNAStringSet(sequences), anchor=NA, processors = cores)
-  print("finished alignemnt")
-  phang.align <- phangorn::phyDat(as(alignment, "matrix"), type="DNA")
-  dm <- phangorn::dist.ml(phang.align)
-  treeNJ <- phangorn::NJ(dm) # Note, tip order != sequence order
-  print("finished NJ")
-  return(treeNJ)
-}
-
-
-# build tree for phyloseqobject
-build_tree_ps <- function(x, cores = NULL) {
-  alignment <- AlignSeqs(x@refseq, anchor=NA, processors = cores)
   print("finished alignemnt")
   phang.align <- phangorn::phyDat(as(alignment, "matrix"), type="DNA")
   dm <- phangorn::dist.ml(phang.align)
@@ -299,7 +517,48 @@ load_blastdbs <- function(s) {
 }
 
 
-# Convert the output object of class "Taxa" to a matrix analogous to the output from assignTaxonomy
+#' Convert IdTaxa output to a taxonomy matrix
+#'
+#' Converts the output of \code{\link[DECIPHER]{IdTaxa}} (class
+#' \code{"Taxa"}) into a character matrix with one row per ASV and one column
+#' per rank, analogous to the output of \code{dada2::assignTaxonomy()}.
+#'
+#' @param ids An object of class \code{"Taxa"} as returned by
+#'   \code{DECIPHER::IdTaxa()}, with one element per ASV.
+#'
+#' @details
+#' The ranks domain, phylum, class, order, family, genus and species are
+#' extracted by name, so the rank names in the training set must match these
+#' (lower case). Ranks below the lowest assigned rank are filled with the
+#' name of that lowest assigned taxon. For example, an ASV classified only to
+#' family gets the family name in the genus and species columns too. Missing
+#' ranks between two assigned ranks stay \code{NA}.
+#'
+#' Labels such as \code{"unclassified_Lachnospiraceae"} produced by
+#' \code{IdTaxa()} are kept as they are.
+#'
+#' The row names are taken from the global object \code{st.all.nochim}
+#' (the chimera-free sequence table), which must exist and contain the ASVs
+#' in the same order as \code{ids}.
+#'
+#' @return A character matrix with the columns \code{domain}, \code{phylum},
+#'   \code{class}, \code{order}, \code{family}, \code{genus} and
+#'   \code{species}, and the ASV sequences as row names.
+#'
+#' @seealso \code{\link[DECIPHER]{IdTaxa}}, \code{\link{build_tree}}
+#'
+#' @importFrom dada2 getSequences
+#' @importFrom utils tail
+#' @importFrom stats na.omit
+#'
+#' @examples
+#' \dontrun{
+#' ids <- DECIPHER::IdTaxa(DNAStringSet(getSequences(st.all.nochim)),
+#'                         trainingSet, processors = NULL)
+#' taxa <- taxa_to_matrix(ids)
+#' }
+#'
+#' @export
 taxa_to_matrix <- function(ids){
   ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species") # ranks of interest
   # Convert the output object of class "Taxa" to a matrix analogous to the output from assignTaxonomy
@@ -373,10 +632,74 @@ get_asv_cluster <- function(blast_out, plot = F, whole_graph = F) {
 }
 
 
-# merge phyloseq objects and merge ASVs according to the list of clusters given in clusters
-# if consensus_seq = T, for each cluster the consensus sequence is calculated. For speedup, turn this off
-# then a random sequence is chosen to represent the new cluster. not suited for phylogenetic diversity calculation afterwards
-# simple_merge ignores ASV information during merging and merges on taxonomic information only
+
+#' Merge phyloseq objects and combine ASV clusters
+#'
+#' Merges a list of phyloseq objects into one and combines groups of ASVs
+#' (clusters) into single taxa. For each cluster, counts are summed and the
+#' taxonomy of the first ASV is kept. Optionally, a consensus sequence is
+#' calculated as the representative sequence of each cluster.
+#'
+#' @param ps_list A list of \code{phyloseq} objects, each with an OTU table,
+#'   taxonomy table and sample data. Unless \code{simple_merge = TRUE}, each
+#'   must also contain reference sequences (\code{refseq}).
+#' @param clusters A list of character vectors. Each vector contains the
+#'   names of ASVs to be merged into one taxon; all names must exist in the
+#'   phyloseq objects. Ignored if \code{simple_merge = TRUE}.
+#' @param consensus_seq Logical. If \code{TRUE} (default), each cluster is
+#'   represented by the consensus sequence of its ASVs, calculated with
+#'   \code{get_consensus_seq()}. If \code{FALSE}, the sequence of the first
+#'   ASV in the cluster is kept, which is much faster but not suitable for
+#'   phylogenetic analyses afterwards (e.g. trees, UniFrac, phylogenetic
+#'   diversity).
+#' @param cores Number of cores. Up to 4 are used as parallel workers via
+#'   \pkg{future}; the full number is passed to \code{get_consensus_seq()}.
+#'   Default 1.
+#' @param simple_merge Logical. If \code{TRUE}, the phyloseq objects are only
+#'   merged with \code{phyloseq::merge_phyloseq()}, without merging clusters
+#'   or reference sequences. Taxa are combined only where their names are
+#'   identical across objects. Default \code{FALSE}.
+#'
+#' @details
+#' The OTU tables, taxonomy tables and sample data are merged separately and
+#' then combined. Clusters are merged with \code{phyloseq::merge_taxa()} using
+#' the first ASV of each cluster as the archetype. After merging, the function
+#' checks that the total counts per sample are unchanged and stops otherwise.
+#'
+#' Unless \code{simple_merge = TRUE}, the taxa are renamed to \code{ASV1},
+#' \code{ASV2}, ... in the result; the sequences remain available through
+#' \code{refseq()}.
+#'
+#' The function calls \code{future::plan(multisession)}, which changes the
+#' parallel setup of the calling session. It prints progress messages and the
+#' unique values of the \code{study} column, so the sample data must contain
+#' a column \code{study}.
+#'
+#' @return A merged \code{phyloseq} object. Unless \code{simple_merge = TRUE},
+#'   it contains one taxon per cluster plus all unclustered ASVs, and
+#'   reference sequences.
+#'
+#' @seealso \code{\link[phyloseq]{merge_phyloseq}},
+#'   \code{\link[phyloseq]{merge_taxa}}
+#'
+#' @importFrom phyloseq otu_table sample_data tax_table refseq merge_phyloseq
+#'   merge_taxa taxa_names ntaxa
+#' @importFrom future plan multisession %<-%
+#' @importFrom purrr reduce
+#'
+#' @examples
+#' \dontrun{
+#' clusters <- list(c("ASV1", "ASV17"), c("ASV5", "ASV8", "ASV23"))
+#' ps_all <- merge_multiple_clusters(list(ps_study1, ps_study2),
+#'                                   clusters = clusters, cores = 4)
+#'
+#' # fast version without consensus sequences
+#' ps_all <- merge_multiple_clusters(list(ps_study1, ps_study2),
+#'                                   clusters = clusters,
+#'                                   consensus_seq = FALSE)
+#' }
+#'
+#' @export
 merge_multiple_clusters <- function(ps_list, clusters = NULL, consensus_seq = T, cores = 1, simple_merge = F) {
   plan(multisession, workers = min(4, cores))
   if(consensus_seq & simple_merge){warning("consensus sequence will not be generated during simple_merge")}
@@ -480,7 +803,7 @@ blast_ps_function <- function(query_name, subject_name, ps_list, cores = 2){
 }
 
 
-# fix merge_taxa2 naming
+# fix merge_taxa2 naming, obsolete with update of microbiome package
 merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
 {
   if (is.null(taxa) && is.null(pattern)) {

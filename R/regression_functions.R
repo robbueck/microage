@@ -12,7 +12,7 @@ library(ggplot2)
 library(gbm)
 library(lme4)
 
-# fix merge_taxa2 naming
+# fix merge_taxa2 naming, obsolete with update of microbiome package
 merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
 {
   if (is.null(taxa) && is.null(pattern)) {
@@ -43,101 +43,12 @@ merge_taxa2_fixed <- function (x, taxa = NULL, pattern = NULL, name = "Merged")
   x2
 }
 
-
-
-# function to run the regression methods
-# k: The number of partitions of the data set. If left as NULL (the default),
-# v will be set to the number of unique values in the grouping variable, creating "leave-one-group-out" splits.
-# outdated, not used anymore
-run_age_cv <- function(data_set, meta_df, group, k = NULL, methods = c("adapt_ranger", "enet", "lasso", "glmnet", "gbm"),
-                       rfGrid = NULL, xgbGrid = NULL){
-  # create subsets for cv
-  set.seed(100)
-  splits <- group_vfold_cv(meta_df, group = group, v = k)
-  caret_split <- rsample2caret(splits)
-  # create subsets for cv
-  tc_grouped <- trainControl(method = "cv", number = 5, 
-                             savePredictions = "final",
-                             selectionFunction = "oneSE", # function to select the best model
-                             index = caret_split$index,
-                             indexOut = caret_split$indexOut,
-                             allowParallel = T)
-  res_list <- setNames(vector("list", length(methods)), methods)
-  
-  # create functions:
-  run_ranger <- function(...) {
-    print("random forest")
-    if(is.null(rfGrid)) {
-      rfGrid <-  expand.grid(mtry = (1:10)*3, 
-                             num.trees = c(20, 50, 200, 1000), 
-                             min.node.size = (1:5)*4,
-                             splitrule = c("variance"))
-    }
-    return(train(x = data_set, y = meta_df$age,
-                 method = adapt_ranger, 
-                 importance = "permutation",
-                 trControl = tc_grouped,
-                 tuneGrid = rfGrid)
-           )
-  }
-  run_enet <- function(){
-    print("elastic net")
-    return(train(x = data_set, y = meta_df$age,
-                 method = "enet", 
-                 trControl = tc_grouped,
-                 verbose = FALSE)
-    )
-  }
-  run_lasso <- function(){
-    print("lasso regression")
-    return(train(x = data_set, y = meta_df$age, method = "lasso", trControl = tc_grouped))
-  }
-  run_glmnet <- function(){
-    print("glmnet")
-    return(train(x = data_set, y = meta_df$age,method = "glmnet", trControl = tc_grouped))
-  }
-  run_gbm <- function(){
-    print("gradient boosting")
-    return(train(x = data_set, y = meta_df$age,
-                 method = "gbm", 
-                 trControl = tc_grouped_subjects,
-                 verbose = FALSE)
-    )
-  }
-  run_xgbtree <- function(){
-    if(is.null(xgbGrid)) {
-      xgbGrid <- expand.grid(
-      nrounds = seq(from = 200, to = 1000, by = 50),
-      eta = c(0.025, 0.05, 0.1, 0.3),
-      max_depth = c(2, 3, 4, 5, 6),
-      gamma = 0,
-      colsample_bytree = 1,
-      min_child_weight = 1,
-      subsample = 1
-    )}
-    xgbFit1_subjects <- train(x = data_set, y = meta_df$age,
-                              method = "xgbTree",
-                              tuneGrid = tune_grid_xgb_subjects,
-                              trControl = tc_grouped_subjects)
-  }
-  
-  # run functions:
-  res_list <- setNames(map(methods, function(task) {
-    if (task %in% c("adapt_ranger", "enet", "lasso", "glmnet", "gbm", "xgbTree")) {
-      switch(task,
-             "adapt_ranger" = run_ranger(),
-             "enet" = run_enet(),
-             "lasso" = run_lasso(),
-             "glmnet" = run_glmnet(),
-             "gbm" = run_gbm(),
-             "xgbTree" = run_xgbtree(),
-             )
-    } else {
-      return(NULL)  # Return NULL if the task is not found in list_total
-    }
-  }), methods)
-  return(res_list)
+# shap analysis:
+pfun <- function(object, newdata) {
+  require(ranger)
+  predict(object, data = newdata)$predictions
 }
+
 
 # creates one data frame with the predictions and some metadata from a list of trained models
 pred_from_list <- function(model_list, metad,
@@ -163,21 +74,67 @@ pred_from_list <- function(model_list, metad,
   return(res_df)
 }
 
-# get R2 and coefficient for each study for each model from a list of models
-# go with R2 on rank transformed predictions
+# transform the otu matrix to binary presence absence format
+binary_transform_out <- function(ps){
+  otu <- otu_table(ps)
+  t_a_r <- taxa_are_rows(otu)
+  otu <- unclass(otu)
+  otu <- otu > 0
+  # cast from logical to double
+  storage.mode(otu) <- "double"
+  otu_table(ps) <- otu_table(otu, taxa_are_rows = t_a_r)
+  return(ps)
+}
+
+
+#' Calculate R² and slope of predicted versus true age per group
+#'
+#' Fits a linear regression of rank-transformed predicted age on true age
+#' separately for each group (e.g. each combination of study and model), and
+#' returns the slope, R², an RSME and the sample size per group.
+#'
+#' @param pred_df A data frame with one row per prediction, containing the
+#'   columns \code{pred} (predicted age), \code{age} (true age) and the
+#'   columns named in \code{grouping}.
+#' @param grouping Character vector of column names that define the groups,
+#'   e.g. \code{c("study", "model_name")}.
+#'
+#' @details
+#' Predictions are replaced by their ranks before fitting, which makes R²
+#' less sensitive to outliers and non-linear relationships. The ranks are
+#' calculated across the whole data frame, not within each group. Models are
+#' fitted with \code{lme4::lmList(pred ~ age | group)}.
+#'
+#' The grouping columns are temporarily combined into one column using
+#' \code{"xxx"} as separator, so the group values must not contain this
+#' string.
+#'
+#' @return A data frame with one row per group, containing the grouping
+#'   columns, \code{Coefficient} (slope of the prediction rank on age),
+#'   \code{R2}, \code{RSME} and \code{n_samples}.
+#'
+#' @seealso \code{\link[lme4]{lmList}}
+#'
+#' @importFrom tidyr unite separate
+#' @importFrom dplyr mutate group_by summarize ungroup left_join n %>%
+#'
+#' @examples
+#' \dontrun{
+#' res <- get_lm_list(pred_df, grouping = c("study", "model_name"))
+#' }
+#'
+#' @export
 get_lm_list <- function(pred_df, grouping){
   pred_df <- pred_df %>%
     tidyr::unite(., col = "grouping_x_model_name", grouping, sep = "xxx") %>%
-    mutate(pred = rank(pred))     # rank transform the predictions
-  list_models <- lme4::lmList(data = pred_df, formula = pred ~ age | grouping_x_model_name)
-  # list_models_sample_sum <- lme4::lmList(data = pred_df, formula = pred ~ age * sample_sum | grouping_x_model_name)
+    mutate(pred_rank = rank(pred))     # rank transform the predictions
+  list_models <- lme4::lmList(data = pred_df, formula = pred_rank ~ age | grouping_x_model_name)
   model_df <- data.frame(grouping_x_model_name = names(list_models),
                          Coefficient = coef(list_models)$age,
-                         # R2_sample_sum = summary(list_models_sample_sum)$r.squared,
                          R2 = summary(list_models)$r.squared)
   RSME_list <- pred_df %>%
     group_by(grouping_x_model_name) %>%
-    dplyr::summarize(RSME = sqrt(mean(age - pred)^2),
+    dplyr::summarize(RSME = sqrt(mean((age - pred)^2)),
                      n_samples = n()) %>%
     ungroup()
   model_df <- left_join(model_df, RSME_list) %>%
@@ -186,13 +143,63 @@ get_lm_list <- function(pred_df, grouping){
 }
 
 
-# function to create plots:
-# if a list is entered, create each plot for each element of the list
-# all_studies argument is for color compatibility with other plots. provide the 
-# same list as in other plots, such as each study gets the same color in different plots
-# independent of the other studies present or absent
-# input is either a list of caret models (model_list) or
-# a data frame containing the columns age, pred, color and model_name
+#' Create evaluation plots for age prediction models
+#'
+#' Creates a set of plots to evaluate one or more age prediction models:
+#' predicted versus true age, residuals, R² and slope per group, and, if
+#' models are given, variable importance. Takes either trained caret models
+#' or a data frame of predictions.
+#'
+#' @param model_list A \code{caretList} or a single caret \code{train}
+#'   object. Predictions are extracted with \code{pred_from_list()}. Requires
+#'   \code{metadata_df}. Use either this or \code{all_results}.
+#' @param all_results A data frame of predictions with the columns
+#'   \code{age}, \code{pred}, \code{model_name}, \code{study} and the column
+#'   named in \code{color}. Use either this or \code{model_list}.
+#' @param metadata_df A data frame of sample metadata, required with
+#'   \code{model_list}; ignored with \code{all_results}.
+#' @param all_studies Character vector of all studies used across your plots.
+#'   If given, each study gets the same colour in every plot, independent of
+#'   which studies are present in this one. Default \code{NULL}.
+#' @param color Character. Column used for colouring and grouping, e.g. for
+#'   R² per group. Default \code{"study"}.
+#' @param metadata_cols Character vector of metadata columns added to the
+#'   predictions when using \code{model_list}.
+#'
+#' @details
+#' R² and slope are calculated per group and model with
+#' \code{\link{get_lm_list}}, i.e. on rank-transformed predictions. In the
+#' R²/slope plot, dashed lines mark 0.5 on both axes.
+#'
+#' @return A named list of ggplot objects:
+#'   \describe{
+#'     \item{correlation}{Predicted versus true age per model, with a
+#'       regression line per group and the identity line (red, dashed).}
+#'     \item{residuals}{Residuals (predicted minus true age) versus true age.}
+#'     \item{model}{R² versus slope per group, faceted by model.}
+#'     \item{model_heatmap}{Heatmap of R² per group and model.}
+#'     \item{importance}{Only with \code{model_list}: the ten most important
+#'       features, as one plot or a list of plots per model.}
+#'   }
+#'
+#' @seealso \code{\link{get_lm_list}}
+#'
+#' @importFrom ggplot2 ggplot aes geom_point geom_tile geom_text geom_abline
+#'   geom_vline geom_hline facet_wrap theme_classic theme element_text xlab
+#'   ylab ylim ggtitle guides scale_fill_gradient scale_color_manual
+#' @importFrom ggpmisc stat_poly_line
+#' @importFrom caret varImp
+#' @importFrom viridisLite turbo
+#' @importFrom purrr map
+#' @importFrom dplyr filter %>%
+#'
+#' @examples
+#' \dontrun{
+#' plots <- modelplots(all_results = pred_df, all_studies = all_studies)
+#' plots$correlation
+#' }
+#'
+#' @export
 modelplots <- function(model_list = NULL, all_results = NULL, metadata_df = NULL, all_studies = NULL, color = "study",
                        metadata_cols = c("age", "study", "lifestyle", "country", "run_accession")){
   if(!is.null(model_list) & !is.null(all_results)){
@@ -223,7 +230,7 @@ modelplots <- function(model_list = NULL, all_results = NULL, metadata_df = NULL
     xlab("True age [days]") +
     ylab("Predicted age [days]") +
     stat_poly_line(fm.values = T) +
-    ylim(0, max(all_results$pred)) +
+    coord_cartesian(ylim = c(0, max(all_results$pred))) +
     facet_wrap(~model_name) +
     geom_abline(slope = 1, color = "red", linetype = 2) +
     theme(text = element_text(size = 20),
@@ -247,18 +254,12 @@ modelplots <- function(model_list = NULL, all_results = NULL, metadata_df = NULL
     theme_classic() +
     # expand_limits(y=0)+
     facet_wrap(~model_name) +
-    # labs(size = "slope") +
     xlab("R\u00b2") +
     ylab("Slope") +
-    # geom_abline(slope = 1, color = "red", linetype = 2) +
     geom_vline(aes(xintercept = 0.5), linetype = "dashed", color = "red") +
     geom_hline(aes(yintercept = 0.5), linetype = "dashed", color = "red") +
     guides(colour = "none") +
-    theme(#axis.title.y=element_blank(),
-          # axis.text.y=element_blank(),
-          # axis.ticks.y = element_blank(),
-          # axis.line.y = element_blank(),
-          text = element_text(size = 20),
+    theme(text = element_text(size = 20),
           legend.position=c(0.17, 0.2),
           legend.title = element_text(size=15),
           legend.text = element_text(size = 13)) 
@@ -270,7 +271,7 @@ modelplots <- function(model_list = NULL, all_results = NULL, metadata_df = NULL
 
   if(!is.null(model_list)){
     # importance plots
-    if(class(model_list) == "caretList") {
+    if(inherits(model_list, "caretList")) {
       res_list$importance <- setNames(map(names(model_list), ~ varImp(model_list[[.x]]) %>%
                                   ggplot(., top = 10) +
                                   theme_classic() +
@@ -300,31 +301,92 @@ modelplots <- function(model_list = NULL, all_results = NULL, metadata_df = NULL
     res_list$lm_plot <- res_list$lm_plot +
       scale_color_manual(values = turbo(length(all_studies))[studies_here], breaks = all_studies[studies_here] )
   }
-  # res_list <- c(res_list, correlations = cor_plot, residuals = res_plot, linear_model = lm_plot)
   return(res_list)
 }
 
-# transform the otu matrix to binary presence absence format
-binary_transform_out <- function(ps){
-  otu <- otu_table(ps)
-  t_a_r <- taxa_are_rows(otu)
-  otu <- unclass(otu)
-  otu <- otu > 0
-  # cast from logical to double
-  storage.mode(otu) <- "double"
-  otu_table(ps) <- otu_table(otu, taxa_are_rows = t_a_r)
-  return(ps)
-}
 
 
-# funciton to preprocess a phyloseq object to be used by caret. returns a list with
-# the feature-dataframe and corresponding metadata-dataframe
-# stud_prevalence_cutoff: in ho many studies must a samplefeature be present
-# study_prevalence_cutoff: prevalence cutoff in how many samples a taxon must be detected to be considered present in this study
-# mean_ab_cutoff: mean abundance cutoff, only counting non-zero abundances
-# only_multiple_samples: if only subjects with multiple samples should be contained
-# filter_features: if logical, filter features according to cutoffs or return all features
-# if vector: logical/numerical/character vector of features to keep
+#' Prepare a phyloseq object as input for caret models
+#'
+#' Filters and transforms the taxa of a phyloseq object, optionally adds
+#' alpha diversity and lifestyle as predictors, and returns a feature table
+#' and the matching metadata for use with \code{caret::train()}.
+#'
+#' @param ps_object A \code{phyloseq} object with taxa as rows in the OTU
+#'   table. The sample data must contain \code{study} and
+#'   \code{run_accession}, plus \code{subject_ID} if
+#'   \code{only_multiple_samples = TRUE} and \code{lifestyle} if
+#'   \code{"lifestyle_industrialized"} is in \code{additional_cols}.
+#' @param transformation Character. Transformation of the abundances, passed
+#'   to \code{microbiome::transform()} (e.g. \code{"identity"},
+#'   \code{"compositional"}, \code{"clr"}), or \code{"binary"} for
+#'   presence/absence via \code{binary_transform_out()}. Default
+#'   \code{"identity"}.
+#' @param mean_ab_cutoff Numeric. Taxa are kept only if their mean relative
+#'   abundance, counting only samples where they are present, exceeds this
+#'   value. Default \code{5e-5}.
+#' @param study_prevalence_cutoff Integer. Minimum number of studies in which
+#'   a taxon must be prevalent to be kept. Default 2.
+#' @param prevalence_in_study_cutoff Integer. Minimum number of samples in
+#'   which a taxon must be detected for it to count as prevalent in a study.
+#'   Default 5.
+#' @param additional_cols Character vector of extra predictors added to the
+#'   features. \code{"Observed"} and \code{"Shannon"} add richness and Shannon
+#'   diversity; \code{"lifestyle_industrialized"} adds 1 for industrialized
+#'   and 0 for other samples. Other names are taken from the sample data.
+#' @param rf_depth Integer. Rarefaction depth for calculating diversity.
+#'   Default 2000.
+#' @param only_multiple_samples Logical. If \code{TRUE}, only subjects with
+#'   at least two samples are kept. Default \code{FALSE}.
+#' @param filter_features Either a logical or a character vector:
+#'   \describe{
+#'     \item{\code{TRUE}}{(default) Filter taxa by mean abundance and
+#'       prevalence.}
+#'     \item{\code{FALSE}}{Keep all taxa.}
+#'     \item{character vector}{Feature names to keep, e.g. the columns of a
+#'       training set when preparing a test set. Features missing from the
+#'       data are added as columns of zeros, so the result matches the
+#'       training data.}
+#'   }
+#'
+#' @details
+#' The mean abundance filter is always applied to relative abundances,
+#' independent of \code{transformation}, and is followed by the prevalence
+#' filter on the transformed data. Both are skipped if \code{filter_features}
+#' is \code{FALSE} or a vector of feature names.
+#'
+#' Samples with at least \code{rf_depth} reads are rarefied before calculating
+#' diversity; samples with fewer reads use their raw counts. Rarefaction is
+#' random, so call \code{set.seed()} beforehand for reproducible results.
+#'
+#' @return A list with:
+#'   \describe{
+#'     \item{features}{A data frame with one row per sample and one column
+#'       per feature (taxa and additional predictors).}
+#'     \item{metadata}{The sample data in the same order, including
+#'       \code{Observed}, \code{Shannon} and \code{lifestyle_industrialized}
+#'       if requested.}
+#'   }
+#'
+#' @seealso \code{\link{get_predictions_lifestyle}}
+#'
+#' @importFrom phyloseq filter_taxa prune_taxa prune_samples sample_sums
+#'   taxa_names sample_names sample_data otu_table rarefy_even_depth
+#'   merge_phyloseq estimate_richness
+#' @importFrom dplyr filter select group_by summarize across everything where
+#'   %>%
+#' @importFrom tibble deframe
+#' @importFrom methods as
+#'
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' train <- create_caret_df(ps_train, transformation = "compositional")
+#' test  <- create_caret_df(ps_test, transformation = "compositional",
+#'                          filter_features = colnames(train$features))
+#' }
+#'
+#' @export
 create_caret_df <- function(ps_object, transformation = "identity", mean_ab_cutoff = 5e-5, 
                             study_prevalence_cutoff = 2, # detected in how many studies
                             prevalence_in_study_cutoff = 5, # 
@@ -335,8 +397,8 @@ create_caret_df <- function(ps_object, transformation = "identity", mean_ab_cuto
   if(length(filter_features) > 1){
     filter_features <- F
   }
-  if(transformation == "identity" & mean_ab_cutoff < 1){
-    warning("No transformation, mean_ab_cutoff below 1 will have no effect")
+  if(transformation == "compositional" & mean_ab_cutoff < 1){
+    warning("transformation is not compositional, but filter will be applied to compositional values")
   }
   
   if(filter_features) {
@@ -365,7 +427,6 @@ create_caret_df <- function(ps_object, transformation = "identity", mean_ab_cuto
       select(subject_ID) %>%
       unique %>%
       deframe
-    # ps_object_trans <- ps_object_trans %>% subset_samples(subject_ID %in% multiple_samples)
     oldDF <- as(sample_data(ps_object_trans), "data.frame") 
     newDF <- subset(oldDF, subject_ID %in% multiple_samples) 
     sample_data(ps_object_trans) <- sample_data(newDF) 
@@ -396,26 +457,33 @@ create_caret_df <- function(ps_object, transformation = "identity", mean_ab_cuto
   if(!"study" %in% colnames(ps_object_trans@sam_data)){
     stop("study not in sam_data of ps_object, but required")
   }
-  data_set_caret <- ps_object_trans%>%
-    otu_table() %>%
-    t() %>%
-    data.frame() %>%
-    # select(!Unknown) %>%
-    cbind(metadf[,c(additional_cols, "study", "run_accession")]) %>%
-    select(-run_accession)
+  if(taxa_are_rows(ps_object_trans)) {
+    data_set_caret <- ps_object_trans%>%
+      otu_table() %>%
+      t() %>%
+      data.frame() %>%
+      cbind(metadf[,c(additional_cols, "study", "run_accession")]) %>%
+      select(-run_accession)
+  } else {
+    data_set_caret <- ps_object_trans%>%
+      otu_table() %>%
+      data.frame() %>%
+      cbind(metadf[,c(additional_cols, "study", "run_accession")]) %>%
+      select(-run_accession)
+  }
   
   if(filter_features){
     # prevalence filtering, only keep taxa present in multiple studies
     cols_to_keep <- data_set_caret %>% group_by(study) %>%
       summarize(across(everything(), ~ sum(. > 0))) %>% 
       select(-study) %>%
-      select(where(~ sum(. >= prevalence_in_study_cutoff) >= study_prevalence_cutoff)) %>% # adjust threshold, in how many studies can a taxon must be detected
+      select(where(~ sum(. >= prevalence_in_study_cutoff) >= study_prevalence_cutoff)) %>% # adjust threshold, in how many studies a taxon must be detected
       colnames()  
     if("lifestyle_industrialized" %in% additional_cols){
       cols_to_keep <- c(cols_to_keep, "lifestyle_industrialized") %>% unique # is either 1 or 0 for all samples of one study
     }
   } else if(length(cols_to_keep) == 1) { # filter_features = F, use all features
-    cols_to_keep <- colnames(data_set_caret)
+    cols_to_keep <- setdiff(colnames(data_set_caret), "study")
   } 
   # add missing columns
   missing_cols <- cols_to_keep[!cols_to_keep %in% colnames(data_set_caret)]
@@ -425,13 +493,66 @@ create_caret_df <- function(ps_object, transformation = "identity", mean_ab_cuto
 }
 
 
-# shap analysis:
-pfun <- function(object, newdata) {
-  require(ranger)
-  predict(object, data = newdata)$predictions
-}
 
-get_shap_long <- function(model, test_data = NULL, features = NULL) {
+#' Calculate SHAP values for a random forest model in long format
+#'
+#' Calculates approximate SHAP values with \pkg{fastshap} for a trained
+#' caret random forest model, and returns them in long format together with
+#' the scaled feature values, e.g. for SHAP summary or dependence plots.
+#'
+#' @param model A random forest model trained with \code{caret::train()}
+#'   (ranger-based). For \code{features = "important"}, it must have been
+#'   trained with variable importance enabled.
+#' @param test_data A data frame of feature values for which SHAP values are
+#'   calculated, with the same feature columns as the training data. If
+#'   \code{NULL} (default), the model's training data is used.
+#' @param nsim Integer. Passed to fastshap::explain. Default \code{10}.
+#' @param features Which features to explain:
+#'   \describe{
+#'     \item{\code{NULL}}{(default) All features.}
+#'     \item{\code{"important"}}{The 15 features with the highest variable
+#'       importance in the model.}
+#'     \item{character vector}{The named features; names not present in
+#'       \code{test_data} are dropped.}
+#'   }
+#'
+#' @details
+#' SHAP values are approximated by Monte Carlo sampling with 10 simulations
+#' (\code{nsim = 10}), so results vary between runs; call \code{set.seed()}
+#' beforehand for reproducible results. Predictions are made with a function
+#' \code{pfun(object, newdata)}, which must exist in the calling environment.
+#' The calculation runs in parallel if a \pkg{foreach} backend is registered
+#' (e.g. with \pkg{doParallel}).
+#'
+#' Feature values are scaled by dividing by the maximum of each feature, so
+#' they range up to 1. This scaling is only meaningful for non-negative
+#' features such as abundances.
+#'
+#' @return A long data frame with one row per sample and feature, containing:
+#'   \describe{
+#'     \item{sample_ID}{Row number of the sample in \code{test_data}.}
+#'     \item{taxon}{Feature name.}
+#'     \item{shap_value}{SHAP value of the feature for that sample.}
+#'     \item{run_accession}{Row name of the sample in \code{test_data}.}
+#'     \item{ab_value}{Feature value divided by the feature's maximum.}
+#'   }
+#'
+#' @seealso \code{\link[fastshap]{explain}}, \code{\link{ks_test_lifestyle}}
+#'
+#' @importFrom fastshap explain
+#' @importFrom dplyr select mutate across everything left_join %>%
+#' @importFrom tidyr pivot_longer
+#' @importFrom tibble rownames_to_column
+#'
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' shap_df <- get_shap_long(rf_model, test_data = test$features,
+#'                          features = "important")
+#' }
+#'
+#' @export
+get_shap_long <- function(model, test_data = NULL, features = NULL, nsim= 10) {
   if(!is.null(features)) {
     if(all(features == "important")) {
       print("runnin shap analysis on the 15 most important features")
@@ -447,7 +568,7 @@ get_shap_long <- function(model, test_data = NULL, features = NULL) {
     model$finalModel,
     X = test_data,
     pred_wrapper = pfun,
-    nsim = 10,
+    nsim = nsim,
     shap_only = F,
     feature_names = features,
     parallel = T)
@@ -472,9 +593,71 @@ get_shap_long <- function(model, test_data = NULL, features = NULL) {
 
 
 
-# for lodocv:
+#' Train final age prediction model
+#'
+#' Prepares the features of a phyloseq object with
+#' \code{\link{create_caret_df}} and trains a lasso regression and a random
+#' forest to predict age. Hyperparameters are tuned with grouped
+#' cross-validation in which each study forms one fold.
+#'
+#' @param ps A \code{phyloseq} object with the training samples; see
+#'   \code{\link{create_caret_df}} for the required sample data.
+#' @param transform Character. Abundance transformation passed to
+#'   \code{create_caret_df()}. Default \code{"compositional"}.
+#' @param extra_cols Character vector of additional predictors passed to
+#'   \code{create_caret_df()}. Default richness and Shannon diversity.
+#' @param prefilter Logical. If \code{TRUE}, removes highly correlated
+#'   features (absolute Pearson correlation > 0.8) with
+#'   \code{caret::findCorrelation()} before training. Default \code{FALSE}.
+#' @param rf_depth Integer. Rarefaction depth for diversity, passed to
+#'   \code{create_caret_df()}. Default 2000.
+#' @param pre_processing Character vector of caret pre-processing steps.
+#'   Default \code{"nzv"} (remove near-zero-variance features).
+#' @param pre_processing_option List of options for the pre-processing,
+#'   passed to \code{preProcOptions} in \code{caret::trainControl()}.
+#'   Default \code{list(uniqueCut = 5)}.
+#'
+#' @details
+#' Features are filtered in \code{create_caret_df()} by mean abundance
+#' (> 5e-5) and prevalence (detected in at least 5 samples in at least
+#' 2 studies). Both models are tuned on the same leave-one-study-out splits,
+#' using R² and the one-standard-error rule to select the final parameters.
+#' The random forest uses the custom caret method \code{adapt_ranger} with
+#' permutation importance and the grid:
+#' \itemize{
+#'   \item \code{mtry}: 3, 10
+#'   \item \code{min.node.size}: 5, 10
+#'   \item \code{num.trees}: 200; \code{splitrule}: variance;
+#'     \code{replace}: \code{FALSE}
+#' }
+#' The training data is stored in the random forest model, so that
+#' \code{\link{get_shap_long}} can use it by default.
+#'
+#' Training is random; call \code{set.seed()} beforehand for reproducible
+#' results. \code{allowParallel = TRUE} only takes effect if a parallel
+#' backend is registered.
+#'
+#' @return A \code{caretList} with the trained models \code{lasso} and
+#'   \code{rf1}.
+#'
+#' @seealso \code{\link{create_caret_df}}, \code{\link{get_shap_long}},
+#'   \code{\link{get_predictions_lifestyle}}
+#'
+#' @importFrom caret findCorrelation trainControl
+#' @importFrom caretEnsemble caretList caretModelSpec
+#' @importFrom rsample group_vfold_cv rsample2caret
+#' @importFrom stats cor
+#'
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' models <- get_final_model(ps_train, prefilter = TRUE)
+#' models$rf1$bestTune
+#' }
+#'
+#' @export
 get_final_model <- function(ps, transform = "compositional",
-                            extra_cols = c("Observed", "Shannon", "lifestyle_industrialized"),
+                            extra_cols = c("Observed", "Shannon"),
                             prefilter = F,
                             rf_depth = 2000,
                             pre_processing = "nzv",
@@ -486,9 +669,11 @@ get_final_model <- function(ps, transform = "compositional",
                                           rf_depth = rf_depth,
                                           only_multiple_samples = F)
   if(prefilter) {
-    family_cleaned_cor <- cor(for_caret_list_train$features)
+    family_cleaned_cor <- cor(for_caret_list_train$features, use = "pairwise.complete.obs")
     highlyCorrelated_family_cleaned <- findCorrelation(family_cleaned_cor, cutoff=0.8)
-    for_caret_list_train$features <- for_caret_list_train$features[,-highlyCorrelated_family_cleaned]
+    if (length(highlyCorrelated_family_cleaned) > 0){
+      for_caret_list_train$features <- for_caret_list_train$features[,-highlyCorrelated_family_cleaned]
+    }
   }
   splits <- group_vfold_cv(for_caret_list_train$metadata, group = "study")
   caret_split <- rsample2caret(splits)
@@ -522,12 +707,81 @@ get_final_model <- function(ps, transform = "compositional",
   return(rf_model_list)
 }
 
+
+#' Train age prediction models for leave-one-dataset-out validation
+#'
+#' Prepares the features of a phyloseq object with
+#' \code{\link{create_caret_df}} and trains a lasso regression and a random
+#' forest to predict age. Hyperparameters are tuned with grouped
+#' cross-validation in which each study forms one fold. Intended as the model
+#' fitting step within leave-one-dataset-out cross-validation, where
+#' \code{ps} contains all studies except the held-out one.
+#'
+#' @param ps A \code{phyloseq} object with the training samples; see
+#'   \code{\link{create_caret_df}} for the required sample data.
+#' @param transform Character. Abundance transformation passed to
+#'   \code{create_caret_df()}. Default \code{"compositional"}.
+#' @param extra_cols Character vector of additional predictors passed to
+#'   \code{create_caret_df()}. Default richness, Shannon diversity and
+#'   industrialized lifestyle.
+#' @param prefilter Logical. If \code{TRUE}, removes highly correlated
+#'   features (absolute Pearson correlation > 0.8) with
+#'   \code{caret::findCorrelation()} before training. Default \code{FALSE}.
+#' @param rf_depth Integer. Rarefaction depth for diversity, passed to
+#'   \code{create_caret_df()}. Default 2000.
+#' @param pre_processing Character vector of caret pre-processing steps.
+#'   Default \code{"nzv"} (remove near-zero-variance features).
+#' @param pre_processing_option List of options for the pre-processing,
+#'   passed to \code{preProcOptions} in \code{caret::trainControl()}.
+#'   Default \code{list(uniqueCut = 5)}.
+#'
+#' @details
+#' Features are filtered in \code{create_caret_df()} by mean abundance
+#' (> 5e-5) and prevalence (detected in at least 5 samples in at least
+#' 2 studies). Both models are tuned on the same leave-one-study-out splits,
+#' using R² and the one-standard-error rule to select the final parameters.
+#' The random forest uses the custom caret method \code{adapt_ranger} with
+#' permutation importance and the grid:
+#' \itemize{
+#'   \item \code{mtry}: 3, 10
+#'   \item \code{min.node.size}: 5, 10
+#'   \item \code{num.trees}: 200; \code{splitrule}: variance;
+#'     \code{replace}: \code{FALSE}
+#' }
+#' The training data is stored in the random forest model, so that
+#' \code{\link{get_shap_long}} can use it by default.
+#'
+#' Training is random; call \code{set.seed()} beforehand for reproducible
+#' results. \code{allowParallel = TRUE} only takes effect if a parallel
+#' backend is registered.
+#'
+#' @return A \code{caretList} with the trained models \code{lasso} and
+#'   \code{rf1}.
+#'
+#' @seealso \code{\link{create_caret_df}}, \code{\link{get_shap_long}},
+#'   \code{\link{get_predictions_lifestyle}}
+#'
+#' @importFrom caret findCorrelation trainControl
+#' @importFrom caretEnsemble caretList caretModelSpec
+#' @importFrom rsample group_vfold_cv rsample2caret
+#' @importFrom stats cor
+#'
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' ps_train <- subset_samples(ps, study != "backhed_2015")
+#' models <- get_final_model(ps_train, prefilter = TRUE)
+#' models$rf1$bestTune
+#' }
+#'
+#' @export
 get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
                                       transform = "compositional",
                                       extra_cols = c("Observed", "Shannon", "lifestyle_industrialized"),
                                       prefilter = F,
                                       pre_processing = "nzv",
                                       rf_depth = 2000,
+                                      n_cores = 10,
                                       pre_processing_option = list(uniqueCut = 5)){
   print(test_set)
   oldDF <- as(sample_data(ps), "data.frame") 
@@ -545,16 +799,17 @@ get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
                                           additional_cols = extra_cols,
                                           only_multiple_samples = F)
   if(prefilter) {
-    family_cleaned_cor <- cor(for_caret_list_train$features)
+    family_cleaned_cor <- cor(for_caret_list_train$features, use = "pairwise.complete.obs")
     highlyCorrelated_family_cleaned <- findCorrelation(family_cleaned_cor, cutoff=0.8)
-    for_caret_list_train$features <- for_caret_list_train$features[,-highlyCorrelated_family_cleaned]
+    if (length(highlyCorrelated_family_cleaned) > 0) {
+      for_caret_list_train$features <- for_caret_list_train$features[,-highlyCorrelated_family_cleaned]
+    }
   }
   for_caret_list_test <- create_caret_df(ps_object = ps_test, transformation = transform,
                                          additional_cols = extra_cols,
                                          only_multiple_samples = F,
                                          rf_depth = rf_depth,
                                          filter_features = colnames(for_caret_list_train$features))
-  
   # subset features in test set:
   common_features <- colnames(for_caret_list_test$features) %in% colnames(for_caret_list_train$features)
   for_caret_list_test$features <- for_caret_list_test$features[,common_features]
@@ -586,8 +841,10 @@ get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
                                  )
       )
       write_rds(rf_model_list,
-                file = paste0("..//data/nested_cv_dataset_models/",
+                file = paste0("../data/nested_cv_dataset_models/",
                               prefix, "_", test_set, ".rds"))
+      predictions <- cbind(for_caret_list_test$metadata,
+                           predict(rf_model_list, newdata = for_caret_list_test$features))
       # Boruta feature importance
       print("Run Boruta")
       sel_feat <- Boruta(x=for_caret_list_train$features, y = for_caret_list_train$metadata$age,
@@ -596,9 +853,6 @@ get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
       write_rds(sel_feat,
                 file = paste0("../data/nested_cv_dataset_models/",
                               prefix, "_", test_set, "_boruta_res.rds"))
-      
-      predictions <- cbind(for_caret_list_test$metadata,
-                           predict(rf_model_list, newdata = for_caret_list_test$features))
     }
   )
   if(inherits(possibleError, "try-error")){
@@ -607,6 +861,5 @@ get_predictions_nested_cv <- function(test_set, ps, prefix = "default",
                           lasso = NA,
                           rf1 = NA)
   }
-  
   return(predictions)
 }

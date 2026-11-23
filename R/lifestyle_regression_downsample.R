@@ -47,7 +47,6 @@ get_list <- function(vl, dfrm, max = NA, study_prob = F) {
       select(prob, !!sym(vl)) %>%
       distinct() %>%
       column_to_rownames(vl)
-    # print(lst)
     # lapply(lst, function(x) print(probs[x,]))
     final_list <- lapply(lst, function(x) sample(x, len, prob = probs[x,]))
   } else {
